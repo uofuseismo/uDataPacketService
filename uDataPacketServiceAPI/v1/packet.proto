@@ -1,7 +1,7 @@
 edition = "2023";
 import "google/protobuf/timestamp.proto";
 
-package UDataPacketImportAPI.V1;
+package UDataPacketServiceAPI.V1;
 
 import "uDataPacketServiceAPI/v1/stream_identifier.proto";
 import "uDataPacketServiceAPI/v1/data_type.proto";
