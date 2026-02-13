@@ -34,10 +34,16 @@ set(IMPORT_PROTO_SRC
     uDataPacketImportAPI/v1/subscription_request.proto
     uDataPacketImportAPI/v1/backend.proto)
 set(EXPORT_PROTO_SRC
-    uDataPacketServiceAPI/v1/data_type.proto)
+    uDataPacketServiceAPI/v1/data_type.proto
+    uDataPacketServiceAPI/v1/stream_identifier.proto
+    uDataPacketServiceAPI/v1/packet.proto)
 set(LIBRARY_SRC
+    src/subscriber.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC})
+set(HEADER_FILES
+    include/uDataPacketService/subscriber.hpp
+    include/uDataPacketService/subscriberOptions.hpp)
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})
 add_library(uDataPacketService::libuDataPacketService ALIAS libuDataPacketService)
@@ -67,15 +73,15 @@ target_sources(libuDataPacketService
                PUBLIC FILE_SET
                       HEADERS
                       BASE_DIRS
-                        src
+                         include
                       FILES
-                        ${HEADER_FILES}
+                         ${HEADER_FILES}
                PUBLIC FILE_SET
                       CXX_MODULES
                       BASE_DIRS
-                        src/modules
+                         src/modules
                       FILES
-                        ${MODULE_FILES}
+                         ${MODULE_FILES}
                )
 protobuf_generate(TARGET libuDataPacketService
                   LANGUAGE cpp
