@@ -4,7 +4,7 @@ import "google/protobuf/timestamp.proto";
 package UDataPacketImportAPI.V1;
 
 import "uDataPacketServiceAPI/v1/stream_identifier.proto";
-import "uDataPacketServiceQbAPI/v1/data_type.proto";
+import "uDataPacketServiceAPI/v1/data_type.proto";
 
 /*!
  * Defines a data packet.  This amounts to a stream identifier, a start time,
