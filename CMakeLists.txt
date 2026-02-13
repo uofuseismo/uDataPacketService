@@ -36,7 +36,8 @@ set(IMPORT_PROTO_SRC
 set(EXPORT_PROTO_SRC
     uDataPacketServiceAPI/v1/data_type.proto
     uDataPacketServiceAPI/v1/stream_identifier.proto
-    uDataPacketServiceAPI/v1/packet.proto)
+    uDataPacketServiceAPI/v1/packet.proto
+    )
 set(LIBRARY_SRC
     src/subscriber.cpp
     ${IMPORT_PROTO_SRC}
