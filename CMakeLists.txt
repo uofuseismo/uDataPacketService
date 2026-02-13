@@ -61,7 +61,7 @@ target_link_libraries(libuDataPacketService
                               opentelemetry-cpp::otlp_http_metric_exporter
                               spdlog::spdlog_header_only
                               Boost::headers
-                              Boost::program_options
+                              #Boost::program_options
                               Threads::Threads)
 target_sources(libuDataPacketService
                PUBLIC FILE_SET
@@ -87,3 +87,27 @@ protobuf_generate(TARGET libuDataPacketService
                   GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
                  )
 
+add_executable(uDataPacketService
+               src/main.cpp)
+set_target_properties(uDataPacketService PROPERTIES
+                      CXX_STANDARD 20
+                      CXX_STANDARD_REQUIRED YES 
+                      CXX_EXTENSIONS NO) 
+target_include_directories(uDataPacketService
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
+                          )
+target_link_libraries(uDataPacketService
+                      PUBLIC
+                         TBB::tbb
+                      PRIVATE
+                         uDataPacketService::libuDataPacketService
+                         gRPC::grpc
+                         gRPC::grpc++
+                         opentelemetry-cpp::otlp_http_log_record_exporter
+                         opentelemetry-cpp::otlp_http_metric_exporter
+                         spdlog::spdlog_header_only
+                         Boost::headers
+                         Boost::program_options
+                         Threads::Threads)
