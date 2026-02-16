@@ -1,4 +1,5 @@
 import ProgramOptions;
+import PacketConverter;
 
 #include <iostream>
 #include <csignal>
@@ -6,10 +7,17 @@ import ProgramOptions;
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#ifndef NDEBUG
+#include <cassert>
+#endif
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
+#include <tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include "uDataPacketImportAPI/v1/packet.pb.h"
+#include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketService/subscriber.hpp"
 
 namespace
 {   
@@ -23,7 +31,51 @@ public:
         mOptions(options),
         mLogger(logger)
     {
+#ifndef NDEBUG
+        assert(mLogger != nullptr);
+#endif
+        mSubscriber
+            = std::make_unique<UDataPacketService::Subscriber>
+              (mOptions.subscriberOptions, mAddPacketCallbackFunction, mLogger);
+        mMaximumImportQueueSize = mOptions.maximumImportQueueSize;
+        mImportQueue.set_capacity(mMaximumImportQueueSize);
     }
+
+    void start()
+    {
+        mKeepRunning.store(true);
+//        mFutures.push_back(std::move(mSubscriber->start());
+    }
+
+    void addPacketCallback(UDataPacketImportAPI::V1::Packet &&inputPacket)
+    {
+        try
+        {
+            auto newPacket = UDataPacketService::convert(std::move(inputPacket));
+            while (mImportQueue.size() >= mMaximumImportQueueSize)
+            {   
+                UDataPacketServiceAPI::V1::Packet workSpace;
+                if (!mImportQueue.try_pop(workSpace))
+                {   
+                    SPDLOG_LOGGER_WARN(mLogger, 
+                        "Failed to pop front of queue while adding packet");
+                    break;
+                }   
+            }   
+            // Send the packet
+            if (!mImportQueue.try_push(std::move(newPacket)))
+            {   
+                SPDLOG_LOGGER_WARN(mLogger,
+                    "Failed to add packet to import queue");
+            }
+        }
+        catch (const std::exception &e)
+        {
+            SPDLOG_LOGGER_WARN(mLogger,
+                               "Failed to add packet because {}",
+                               std::string {e.what()});
+        }
+    } 
 
     /// Handles sigterm and sigint
     static void signalHandler(const int )
@@ -44,6 +96,18 @@ public:
 //private:
     UDataPacketService::ProgramOptions mOptions; 
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    std::unique_ptr<UDataPacketService::Subscriber> mSubscriber{nullptr};
+    std::vector<std::future<void>> mFutures;
+    tbb::concurrent_bounded_queue<UDataPacketServiceAPI::V1::Packet>
+        mImportQueue;
+    std::function<void(UDataPacketImportAPI::V1::Packet &&)>
+        mAddPacketCallbackFunction
+    {
+        std::bind(&::Process::addPacketCallback, this,
+                  std::placeholders::_1)
+    };  
+    int mMaximumImportQueueSize{8192};
+    std::atomic<bool> mKeepRunning{true};
 };
 
 }

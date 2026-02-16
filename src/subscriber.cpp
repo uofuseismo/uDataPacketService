@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <grpc/grpc.h>
 #include "uDataPacketService/subscriber.hpp"
+#include "uDataPacketService/grpcOptions.hpp"
 #include "uDataPacketService/subscriberOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
@@ -22,7 +23,7 @@ public:
     (
         UDataPacketImportAPI::V1::Backend::Stub *stub,
         const UDataPacketImportAPI::V1::SubscriptionRequest &request,
-        std::function<void (const UDataPacketImportAPI::V1::Packet &)> &addPacketCallback,
+        std::function<void (UDataPacketImportAPI::V1::Packet &&)> &addPacketCallback,
         std::shared_ptr<spdlog::logger> logger,
         std::atomic<bool> *keepRunning
     ) :
@@ -42,7 +43,8 @@ public:
         {
             try
             {
-                mAddPacketCallback(mPacket);
+                auto copy = mPacket;
+                mAddPacketCallback(std::move(copy));
             }
             catch (const std::exception &e)
             {
@@ -86,7 +88,7 @@ private:
     UDataPacketImportAPI::V1::SubscriptionRequest mRequest;
     std::function
     <
-        void (const UDataPacketImportAPI::V1::Packet &packet)
+        void (UDataPacketImportAPI::V1::Packet &&packet)
     > mAddPacketCallback;
     std::shared_ptr<spdlog::logger> mLogger;
     std::mutex mMutex;
@@ -102,8 +104,51 @@ private:
 class Subscriber::SubscriberImpl
 {
 public:
+    SubscriberImpl(const SubscriberOptions &options,
+                   const std::function<void (const UDataPacketImportAPI::V1::Packet &)> &callback,
+                   std::shared_ptr<spdlog::logger> logger) :
+        mOptions(options),
+        mAddPacketCallback(callback),
+        mLogger(logger)
+    {
+    }
+                   
+    ~SubscriberImpl()
+    {
+        stop();
+    }
+    void stop()
+    {
+        mKeepRunning.store(false);
+    }
+    [[nodiscard]] std::future<void> start()
+    {
+        mKeepRunning.store(true);
+        auto result = std::async(&SubscriberImpl::acquirePackets, this);
+        return result;
+    }
+    void acquirePackets()
+    {
+        auto reconnectSchedule = mOptions.getReconnectSchedule();
+        reconnectSchedule.insert(reconnectSchedule.begin(),
+                                 std::chrono::milliseconds {0});
+        for (int k = 0; k < static_cast<int> (reconnectSchedule.size()); ++k)
+        {
+        }         
+    }
+//private:
     SubscriberOptions mOptions;
+    std::function
+    <   
+        void (UDataPacketImportAPI::V1::Packet &&packet)
+    > mAddPacketCallback;
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    std::atomic<bool> mKeepRunning{true};
 };
+
+
+/// constructor
+
 
 /// Destructor
 Subscriber::~Subscriber() = default;

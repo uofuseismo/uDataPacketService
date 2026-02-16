@@ -1,7 +1,12 @@
 #ifndef UDATA_PACKET_SERVICE_SUBSCRIBER_OPTIONS_HPP
 #define UDATA_PACKET_SERVICE_SUBSCRIBER_OPTIONS_HPP
 #include <string>
+#include <vector>
 #include <memory>
+namespace UDataPacketService
+{
+ class GRPCOptions;
+}
 namespace UDataPacketService
 {
 /// @class SubscriberOptions
@@ -18,6 +23,17 @@ public:
     SubscriberOptions(const SubscriberOptions &options);
     /// @brief Move constructor.
     SubscriberOptions(SubscriberOptions &&options) noexcept;
+
+    /// @brief GRPC connection options.
+    void setGRPCOptions(const GRPCOptions &options);
+    /// @result The gRPC connection options.
+    [[nodiscard]] GRPCOptions getGRPCOptions() const;
+
+    /// @brief Sets the reconnection schedule.
+    void setReconnectSchedule(const std::vector<std::chrono::milliseconds> &reconnectSchedule);
+    /// @result The reconnection schedule.
+    [[nodiscard]] std::vector<std::chrono::milliseconds> getReconnectSchedule() const noexcept;
+
     /// @brief Copy assignment.
     SubscriberOptions& operator=(const SubscriberOptions &options);
     /// @brief Move assignment.

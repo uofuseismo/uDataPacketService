@@ -10,6 +10,7 @@ module;
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include "uDataPacketService/subscriberOptions.hpp"
+#include "uDataPacketService/grpcOptions.hpp"
 
 export module ProgramOptions;
 
@@ -41,6 +42,7 @@ export struct ProgramOptions
     OTelHTTPLogOptions otelHTTPLogOptions;
     std::chrono::seconds printSummaryInterval{3600};
     int verbosity{3};
+    int maximumImportQueueSize{8192};
     bool exportLogs{false};
     bool exportMetrics{false};
 };
@@ -86,6 +88,7 @@ Allowed options)""");
     return {iniFile, false};
 }
 
+[[nodiscard]]
 std::string getOTelCollectorURL(boost::property_tree::ptree &propertyTree,
                                 const std::string &section)
 {
@@ -100,6 +103,93 @@ std::string getOTelCollectorURL(boost::property_tree::ptree &propertyTree,
                + std::to_string(otelCollectorPort);
     }
     return result;
+}
+
+[[nodiscard]] std::string
+loadStringFromFile(const std::filesystem::path &path)
+{
+    std::string result;
+    if (!std::filesystem::exists(path)){return result;}
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+        throw std::runtime_error("Failed to open " + path.string());
+    }
+    std::stringstream sstr;
+    sstr << file.rdbuf();
+    file.close();
+    result = sstr.str();
+    return result;
+}
+
+[[nodiscard]] UDataPacketService::GRPCOptions getGRPCOptions(
+    const boost::property_tree::ptree &propertyTree,
+    const std::string &section)
+{
+    UDataPacketService::GRPCOptions options;
+
+    auto host
+        = propertyTree.get<std::string> (section + ".host",
+                                         options.getHost());
+    if (host.empty())
+    {   
+        throw std::runtime_error(section + ".host is empty");
+    }   
+    options.setHost(host);
+
+    uint16_t port{50000};
+    options.setPort(port);
+
+    port = propertyTree.get<uint16_t> (section + ".port", options.getPort());
+    options.setPort(port); 
+
+    auto serverCertificate
+        = propertyTree.get<std::string> (section + ".serverCertificate", "");
+    if (!serverCertificate.empty())
+    {   
+        if (!std::filesystem::exists(serverCertificate))
+        {
+            throw std::invalid_argument("gRPC server certificate file "
+                                      + serverCertificate
+                                      + " does not exist");
+        }
+        options.setServerCertificate(loadStringFromFile(serverCertificate));
+    }
+
+    auto accessToken
+        = propertyTree.get_optional<std::string> (section + ".accessToken");
+    if (accessToken)
+    {
+        if (options.getServerCertificate() == std::nullopt)
+        {
+            throw std::invalid_argument(
+                "Must set server certificate to use access token");
+        }
+        options.setAccessToken(*accessToken);
+    }
+
+    auto clientKey
+        = propertyTree.get<std::string> (section + ".clientKey", "");
+    auto clientCertificate
+        = propertyTree.get<std::string> (section + ".clientCertificate", "");
+    if (!clientKey.empty() && !clientCertificate.empty())
+    {
+        if (!std::filesystem::exists(clientKey))
+        {
+            throw std::invalid_argument("gRPC client key file "
+                                      + clientKey
+                                      + " does not exist");
+        }
+        if (!std::filesystem::exists(clientCertificate))
+        {
+            throw std::invalid_argument("gRPC client certificate file "
+                                      + clientCertificate
+                                      + " does not exist");
+        }
+        options.setClientKey(loadStringFromFile(clientKey));
+        options.setClientCertificate(loadStringFromFile(clientCertificate));
+    }
+    return options;
 }
 
 export ProgramOptions
@@ -122,6 +212,57 @@ export ProgramOptions
         = propertyTree.get<int> ("General.verbosity", options.verbosity);
     options.exportMetrics = false;
     options.exportLogs = false;
+
+    // Logging
+    OTelHTTPLogOptions logOptions;
+    logOptions.url
+         = getOTelCollectorURL(propertyTree, "OTelHTTPLogOptions");
+    logOptions.suffix
+         = propertyTree.get<std::string>
+           ("OTelHTTPLogOptions.suffix", "/v1/logs");
+    if (!logOptions.url.empty())
+    {   
+        if (!logOptions.suffix.empty())
+        {
+            if (!logOptions.url.ends_with("/") &&
+                !logOptions.suffix.starts_with("/"))
+            {
+                logOptions.suffix = "/" + logOptions.suffix;
+            }
+        }
+    }   
+    if (!logOptions.url.empty())
+    {   
+        options.exportLogs = true;
+        options.otelHTTPLogOptions = logOptions;
+    }
+
+    // Metrics
+    OTelHTTPMetricsOptions metricsOptions;
+    metricsOptions.url
+         = getOTelCollectorURL(propertyTree, "OTelHTTPMetricsOptions");
+    metricsOptions.suffix
+         = propertyTree.get<std::string> ("OTelHTTPMetricsOptions.suffix",
+                                          "/v1/metrics");
+    if (!metricsOptions.url.empty())
+    {
+        if (!metricsOptions.suffix.empty())
+        {
+            if (!metricsOptions.url.ends_with("/") &&
+                !metricsOptions.suffix.starts_with("/"))
+            {
+                metricsOptions.suffix = "/" + metricsOptions.suffix;
+            }
+        }
+    }
+
+    // Subscriber
+    SubscriberOptions subscriberOptions;
+    auto subscriberGRPCOptions = getGRPCOptions(propertyTree, "Subscriber");
+    subscriberOptions.setGRPCOptions(subscriberGRPCOptions);
+    options.subscriberOptions = subscriberOptions;
+    
+    
 
     return options;
 }
