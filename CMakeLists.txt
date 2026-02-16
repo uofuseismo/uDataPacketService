@@ -42,10 +42,13 @@ set(LIBRARY_SRC
     src/subscriberOptions.cpp
     src/subscriber.cpp
     ${IMPORT_PROTO_SRC}
-    ${EXPORT_PROTO_SRC})
+    ${EXPORT_PROTO_SRC}
+    )
 set(HEADER_FILES
     include/uDataPacketService/subscriber.hpp
     include/uDataPacketService/subscriberOptions.hpp)
+set(MODULE_FILES
+    src/modules/programOptions.cppm)
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})
 add_library(uDataPacketService::libuDataPacketService ALIAS libuDataPacketService)

@@ -3,10 +3,13 @@
 #include <condition_variable>
 #include <spdlog/spdlog.h>
 #include <grpc/grpc.h>
+#include "uDataPacketService/subscriber.hpp"
 #include "uDataPacketService/subscriberOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
+
+using namespace UDataPacketService;
 
 namespace
 {
@@ -95,3 +98,12 @@ private:
 };
 
 }
+
+class Subscriber::SubscriberImpl
+{
+public:
+    SubscriberOptions mOptions;
+};
+
+/// Destructor
+Subscriber::~Subscriber() = default;
