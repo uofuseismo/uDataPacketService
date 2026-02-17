@@ -105,7 +105,7 @@ class Subscriber::SubscriberImpl
 {
 public:
     SubscriberImpl(const SubscriberOptions &options,
-                   const std::function<void (const UDataPacketImportAPI::V1::Packet &)> &callback,
+                   const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
                    std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
         mAddPacketCallback(callback),
@@ -147,8 +147,28 @@ public:
 };
 
 
-/// constructor
+/// Constructor
+Subscriber::Subscriber
+(
+    const SubscriberOptions &options,
+    const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
+    std::shared_ptr<spdlog::logger> logger
+) :
+    pImpl(std::make_unique<SubscriberImpl> (options, callback, logger))
+{
+}
 
+/// Start the subscriber
+std::future<void> Subscriber::start()
+{
+    return pImpl->start();
+}
+
+/// Stop the subscriber
+void Subscriber::stop()
+{
+    pImpl->stop();
+}
 
 /// Destructor
 Subscriber::~Subscriber() = default;

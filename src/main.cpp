@@ -1,4 +1,5 @@
 import ProgramOptions;
+import Logger;
 import PacketConverter;
 
 #include <iostream>
@@ -12,6 +13,7 @@ import PacketConverter;
 #endif
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
+#include <absl/log/initialize.h>
 #include <tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -41,17 +43,36 @@ public:
         mImportQueue.set_capacity(mMaximumImportQueueSize);
     }
 
+    ~Process()
+    {
+        stop();
+    }
+
+    void stop()
+    {
+        mKeepRunning.store(false);
+        if (mSubscriber){mSubscriber->stop();}
+        for (auto &future : mFutures)
+        {   
+            if (future.valid()){future.get();}
+        }   
+    }
+
     void start()
     {
+#ifndef NDEBUG
+        assert(mSubscriber != nullptr);
+#endif
         mKeepRunning.store(true);
-//        mFutures.push_back(std::move(mSubscriber->start());
+        mFutures.push_back(mSubscriber->start());
     }
 
     void addPacketCallback(UDataPacketImportAPI::V1::Packet &&inputPacket)
     {
         try
         {
-            auto newPacket = UDataPacketService::convert(std::move(inputPacket));
+            auto newPacket
+                = UDataPacketService::convert(std::move(inputPacket));
             while (mImportQueue.size() >= mMaximumImportQueueSize)
             {   
                 UDataPacketServiceAPI::V1::Packet workSpace;
@@ -154,5 +175,59 @@ int main(int argc, char *argv[])
                overwrite);
     }   
 
+    auto logger
+        = UDataPacketService::Logger::initialize(programOptions);
+    // Initialize the metrics singleton
+    //USEEDLinkToDataPacketImportProxy::Metrics::initializeMetricsSingleton();
+
+    try 
+    {   
+        if (programOptions.exportMetrics)
+        {
+            SPDLOG_LOGGER_INFO(logger, "Initializing metrics");
+            //UDataPacketService::Metrics::initialize(programOptions);
+        }
+    }   
+    catch (const std::exception &e) 
+    {   
+        SPDLOG_LOGGER_CRITICAL(logger,
+                               "Failed to initialize metrics because {}",
+                               std::string {e.what()});
+        if (programOptions.exportLogs)
+        {
+            UDataPacketService::Logger::cleanup();
+        }
+        return EXIT_FAILURE;
+    }   
+
+
+    //absl::InitializeLog();
+    try
+    {
+        ::Process process(programOptions, logger);
+        process.start();
+        if (programOptions.exportMetrics)
+        {
+            //UDataPacketService::Metrics::cleanup();
+        }
+        if (programOptions.exportLogs)
+        {
+            UDataPacketService::Logger::cleanup();
+        }
+    }
+    catch (const std::exception &e)
+    {
+        SPDLOG_LOGGER_CRITICAL(logger, "Main process failed with {}",
+                               std::string {e.what()});
+        if (programOptions.exportMetrics)
+        {
+            //UDataPacketService::Metrics::cleanup();
+        }
+        if (programOptions.exportLogs)
+        {
+            UDataPacketService::Logger::cleanup();
+        }
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }

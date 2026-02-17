@@ -24,25 +24,30 @@ void trimAndCapitalize(std::string &s)
 
 [[nodiscard]]
 UDataPacketServiceAPI::V1::StreamIdentifier convert(
+    //const UDataPacketImportAPI::V1::StreamIdentifier &input)
     UDataPacketImportAPI::V1::StreamIdentifier &&input)
 {
     UDataPacketServiceAPI::V1::StreamIdentifier result;
     auto network = std::move(*input.mutable_network());
+    //auto network = input.network();
     trimAndCapitalize(network);
     if (network.empty()){throw std::invalid_argument("Network is empty");}
     result.set_network(std::move(network));
 
     auto station = std::move(*input.mutable_station());
+    //auto station = input.station(); 
     trimAndCapitalize(station);
     if (station.empty()){throw std::invalid_argument("Station is empty");}
     result.set_station(std::move(station));
 
     auto channel = std::move(*input.mutable_channel());
+    //auto channel = input.channel();
     trimAndCapitalize(channel);
     if (channel.empty()){throw std::invalid_argument("Channel is empty");}
     result.set_channel(std::move(channel));
 
     auto locationCode = std::move(*input.mutable_location_code());
+    //auto locationCode = input.location_code();
     trimAndCapitalize(locationCode);
     if (locationCode.empty())
     {   
@@ -63,6 +68,8 @@ UDataPacketServiceAPI::V1::Packet convert(
     UDataPacketServiceAPI::V1::Packet result;
 
     // Packet identifier
+    //*result.mutable_stream_identifier()  
+    //    = convert(input.stream_identifier());
     *result.mutable_stream_identifier() = convert(
         std::move(*input.mutable_stream_identifier()));
 
@@ -80,7 +87,7 @@ UDataPacketServiceAPI::V1::Packet convert(
     result.set_sampling_rate(samplingRate);
 
     // Start time
-    *result.mutable_start_time() = input.start_time();
+    *result.mutable_start_time() = std::move(*input.mutable_start_time());
 
     // Data type and data
     auto dataType = input.data_type();
@@ -122,7 +129,8 @@ UDataPacketServiceAPI::V1::Packet convert(
         }
         throw std::runtime_error("Unhandled data type");
     }
-    result.set_data(std::move(*input.mutable_data()));
+    //result.set_data(std::move(*input.mutable_data()));
+    std::swap(*result.mutable_data(), *input.mutable_data());
     
     return result;
 }

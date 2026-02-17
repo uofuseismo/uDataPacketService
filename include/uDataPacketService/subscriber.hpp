@@ -28,6 +28,11 @@ public:
     /// @brief Destructor
     ~Subscriber();
 
+    /// @brief Starts the subscriber.
+    [[nodiscard]] std::future<void> start();
+    //// @brief Terminates the subscriber.
+    void stop(); 
+
     Subscriber() = delete;
     Subscriber(const Subscriber &) = delete;
     Subscriber(Subscriber &&) noexcept = delete;

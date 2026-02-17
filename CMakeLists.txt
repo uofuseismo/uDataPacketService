@@ -42,6 +42,8 @@ set(LIBRARY_SRC
     src/grpcOptions.cpp
     src/subscriberOptions.cpp
     src/subscriber.cpp
+    src/futurePacketDetector.cpp
+    src/expiredPacketDetector.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
     )
@@ -50,7 +52,10 @@ set(HEADER_FILES
     include/uDataPacketService/subscriberOptions.hpp)
 set(MODULE_FILES
     src/modules/programOptions.cppm
-    src/modules/packetConverter.cppm)
+    src/modules/packetConverter.cppm
+    src/modules/logger.cppm
+    src/modules/otelSpdlogSink.cppm
+    src/modules/utilities.cppm)
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})
 add_library(uDataPacketService::libuDataPacketService ALIAS libuDataPacketService)
@@ -130,7 +135,8 @@ target_link_libraries(uDataPacketService
 ##########################################################################################
 
 add_executable(unitTests
-               testing/grpc.cpp)
+               testing/grpc.cpp
+               testing/packetConverter.cpp)
 set_target_properties(unitTests PROPERTIES
                       CXX_STANDARD 20
                       CXX_STANDARD_REQUIRED YES 
