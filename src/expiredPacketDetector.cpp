@@ -95,32 +95,13 @@ ExpiredPacketDetectorOptions::~ExpiredPacketDetectorOptions() = default;
 class ExpiredPacketDetector::ExpiredPacketDetectorImpl
 {
 public:
-    ExpiredPacketDetectorImpl(const ExpiredPacketDetectorImpl &impl)
-    {
-        *this = impl;
-    }
-    ExpiredPacketDetectorImpl(
-        const ExpiredPacketDetectorOptions &options,
-        std::shared_ptr<spdlog::logger> logger
-    ) :
+    ExpiredPacketDetectorImpl(const ExpiredPacketDetectorOptions &options) :
         mOptions(options),
-        mLogger(logger),
-        mMaxExpiredTime(options.getMaxExpiredTime()),
-        mLogBadDataInterval(options.getLogBadDataInterval())
+        mMaxExpiredTime(options.getMaxExpiredTime())
     {
-        // This might be okay if you really want to account for telemetry
-        // lags.  But that's a dangerous game so I'll let the user know.
         if (mMaxExpiredTime.count() <= 0)
         {
             std::invalid_argument("Max expired time must be positive");
-        }
-        if (mLogBadDataInterval.count() >= 0)
-        {
-            mLogBadData = true;
-        }
-        else
-        {
-            mLogBadData = false;
         }
     }
     /// Checks the packet
@@ -135,95 +116,17 @@ public:
         auto earliestTime = nowMuSeconds - mMaxExpiredTime;
         // Packet contains data before the earliest allowable time
         bool allow = (packetStartTime >= earliestTime) ? true : false;
-        // (Safely) handle logging
-        try
-        {
-            logBadData(allow, packet, nowMuSeconds);
-        }
-        catch (const std::exception &e)
-        {
-            SPDLOG_LOGGER_WARN(mLogger, "Error detect in logBadData: {}", 
-                               std::string {e.what()});
-        }
         return allow;
     }
-    /// Logs the bad packets
-    template<typename U>
-    void logBadData(const bool allow,
-                    const U &packet,
-                    const std::chrono::microseconds &nowMuSec)
-    {
-        if (!mLogBadData){return;}
-        std::string name;
-        try
-        {
-            if (!allow){name = Utilities::toName(packet);}
-        }
-        catch (...)
-        {
-            SPDLOG_LOGGER_WARN(mLogger, "Could not extract name of packet");
-        }
-        auto nowSeconds
-            = std::chrono::duration_cast<std::chrono::seconds> (nowMuSec);
-        {
-        std::lock_guard<std::mutex> lockGuard(mMutex); 
-        try
-        {
-            if (!name.empty() && !mExpiredChannels.contains(name))
-            {
-                mExpiredChannels.insert(name);
-            }
-        }
-        catch (...)
-        {
-            SPDLOG_LOGGER_WARN(mLogger, "Failed to add {} to set", name);
-        }
-        if (nowSeconds >= mLastLogTime + mLogBadDataInterval)
-        {
-            if (!mExpiredChannels.empty())
-            {
-                std::string message{"Expired data detected for:"};
-                for (const auto &channel : mExpiredChannels)
-                {
-                    message = message + " " + channel;
-                }
-                SPDLOG_LOGGER_INFO(mLogger, "{}", message);
-                mExpiredChannels.clear();
-                mLastLogTime = nowSeconds;
-            }
-        }
-        }
-    }
-    ExpiredPacketDetectorImpl& operator=(const ExpiredPacketDetectorImpl &impl)
-    {
-        if (&impl == this){return *this;}
-        {
-        std::lock_guard<std::mutex> lockGuard(impl.mMutex);
-        mExpiredChannels = impl.mExpiredChannels;
-        mLastLogTime = impl.mLastLogTime; 
-        }
-        mOptions = impl.mOptions;
-        mMaxExpiredTime = impl.mMaxExpiredTime;
-        mLogBadDataInterval = impl.mLogBadDataInterval;
-        mLogBadData = impl.mLogBadData;
-        return *this;
-    }
 //private:
-    mutable std::mutex mMutex;
     ExpiredPacketDetectorOptions mOptions;
-    std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    std::set<std::string> mExpiredChannels;
     std::chrono::microseconds mMaxExpiredTime{std::chrono::minutes {5}};
-    std::chrono::seconds mLastLogTime{0};
-    std::chrono::seconds mLogBadDataInterval{3600};
-    bool mLogBadData{true};
 };
 
 /// Constructor with options
 ExpiredPacketDetector::ExpiredPacketDetector(
-    const ExpiredPacketDetectorOptions &options,
-    std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<ExpiredPacketDetectorImpl> (options, logger))
+    const ExpiredPacketDetectorOptions &options) :
+    pImpl(std::make_unique<ExpiredPacketDetectorImpl> (options))
 {
 }
 

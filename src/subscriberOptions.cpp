@@ -16,6 +16,7 @@ public:
         std::chrono::seconds {5},
         std::chrono::seconds {15}
     };
+    std::string mIdentifier;
 };
 
 /// Constructor
@@ -90,3 +91,15 @@ SubscriberOptions::getReconnectSchedule() const noexcept
 
 /// Destructor
 SubscriberOptions::~SubscriberOptions() = default;
+
+void SubscriberOptions::setIdentifier(const std::string &identifier)
+{
+    if (identifier.empty()){throw std::invalid_argument("Identifier is empty");}
+    pImpl->mIdentifier = identifier;
+}
+
+std::optional<std::string> SubscriberOptions::getIdentifier() const noexcept
+{
+    if (pImpl->mIdentifier.empty()){return std::nullopt;}
+    return std::make_optional<std::string> (pImpl->mIdentifier);
+}

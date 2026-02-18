@@ -65,8 +65,7 @@ class ExpiredPacketDetector
 {
 public:
     /// @brief Constructs the expired data detector.
-    ExpiredPacketDetector(const ExpiredPacketDetectorOptions &options,
-                          std::shared_ptr<spdlog::logger> logger);
+    explicit ExpiredPacketDetector(const ExpiredPacketDetectorOptions &options);
     /// @brief Copy constructor.
     ExpiredPacketDetector(const ExpiredPacketDetector &detector);
     /// @brief Move constructor.

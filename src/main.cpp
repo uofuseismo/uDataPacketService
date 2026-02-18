@@ -1,5 +1,6 @@
 import ProgramOptions;
 import Logger;
+import Utilities;
 import PacketConverter;
 
 #include <iostream>
@@ -61,10 +62,13 @@ public:
     void start()
     {
 #ifndef NDEBUG
+        assert(mLogger != nullptr);
         assert(mSubscriber != nullptr);
 #endif
         mKeepRunning.store(true);
+        mFutures.push_back(std::async(&Process::propagateImportPackets, this));
         mFutures.push_back(mSubscriber->start());
+        handleMainThread();
     }
 
     void addPacketCallback(UDataPacketImportAPI::V1::Packet &&inputPacket)
@@ -98,6 +102,107 @@ public:
         }
     } 
 
+    /// Sends the import packets to the client(s)
+    void propagateImportPackets()
+    {
+        const std::chrono::microseconds timeOut{10};
+        while (mKeepRunning.load())
+        {
+            UDataPacketServiceAPI::V1::Packet packet;
+            if (mImportQueue.try_pop(packet))
+            {
+
+            }
+            else
+            {
+                std::this_thread::sleep_for(timeOut); 
+            }
+        }
+    }
+
+    // Print some summary statistics
+    void printSummary()
+    {
+        if (mOptions.printSummaryInterval.count() <= 0){return;}
+        auto now
+            = std::chrono::duration_cast<std::chrono::microseconds>
+              ((std::chrono::high_resolution_clock::now()).time_since_epoch());
+        if (now > mLastPrintSummary + mOptions.printSummaryInterval)
+        {
+            mLastPrintSummary = now;
+
+        }
+    }
+
+    /// Check futures
+    [[nodiscard]]
+    bool checkFuturesOkay(const std::chrono::milliseconds &timeOut)
+    {
+        bool isOkay{true};
+        for (auto &future : mFutures)
+        {
+            try
+            {
+                auto status = future.wait_for(timeOut);
+                if (status == std::future_status::ready)
+                {
+                    future.get();
+                }
+            }
+            catch (const std::exception &e)
+            {
+                SPDLOG_LOGGER_CRITICAL(mLogger,
+                                       "Fatal error detected from thread: {}",
+                                       std::string {e.what()});
+                isOkay = false;
+            }
+        }
+        return isOkay;
+    }
+
+    // Let main thread handle signals from OS and deal with exceptions
+    void handleMainThread()
+    {
+        SPDLOG_LOGGER_DEBUG(mLogger, "Main thread entering waiting loop");
+        catchSignals();
+        while (!mStopRequested)
+        {
+            if (mInterrupted)
+            {   
+                SPDLOG_LOGGER_INFO(mLogger,
+                                   "SIGINT/SIGTERM signal received!");
+                mStopRequested = true;
+                mShutdownRequested = true;
+                mShutdownCondition.notify_all();
+                break;
+            }
+            if (!checkFuturesOkay(std::chrono::milliseconds {5}))
+            {
+                SPDLOG_LOGGER_CRITICAL(
+                   mLogger,
+                   "Futures exception caught; terminating app");
+                mStopRequested = true;
+                mShutdownRequested = true;
+                mShutdownCondition.notify_all();
+                break;
+            }
+            printSummary();
+            std::unique_lock<std::mutex> lock(mStopMutex);
+            mStopCondition.wait_for(lock,
+                                    std::chrono::milliseconds {100},
+                                    [this]
+                                    {
+                                          return mStopRequested;
+                                    });
+            lock.unlock();
+        }
+        if (mStopRequested)
+        {
+            SPDLOG_LOGGER_DEBUG(mLogger, "Stop request received.  Exiting...");
+            stop();
+        }
+    }
+
     /// Handles sigterm and sigint
     static void signalHandler(const int )
     {   
@@ -127,8 +232,18 @@ public:
         std::bind(&::Process::addPacketCallback, this,
                   std::placeholders::_1)
     };  
+    mutable std::mutex mStopMutex;
+    mutable std::mutex mShutdownMutex;
+    std::condition_variable mStopCondition;
+    std::condition_variable mShutdownCondition;
+    std::chrono::microseconds mLastPrintSummary
+    {
+        UDataPacketService::Utilities::getNow<std::chrono::microseconds> ()
+    };
     int mMaximumImportQueueSize{8192};
     std::atomic<bool> mKeepRunning{true};
+    bool mStopRequested{false};
+    bool mShutdownRequested{false};
 };
 
 }

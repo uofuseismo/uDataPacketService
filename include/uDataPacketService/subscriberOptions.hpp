@@ -34,6 +34,12 @@ public:
     /// @result The reconnection schedule.
     [[nodiscard]] std::vector<std::chrono::milliseconds> getReconnectSchedule() const noexcept;
 
+    /// @brief Sets the subscriber identifier.
+    void setIdentifier(const std::string &name);
+    /// @result The subscriber identifier.
+    [[nodiscard]] std::optional<std::string> getIdentifier() const noexcept;
+    
+
     /// @brief Copy assignment.
     SubscriberOptions& operator=(const SubscriberOptions &options);
     /// @brief Move assignment.

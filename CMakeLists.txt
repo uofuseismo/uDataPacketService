@@ -133,28 +133,28 @@ target_link_libraries(uDataPacketService
 ##########################################################################################
 #                                         Tests                                          #
 ##########################################################################################
-
-add_executable(unitTests
-               testing/grpc.cpp
-               testing/packetConverter.cpp)
-set_target_properties(unitTests PROPERTIES
-                      CXX_STANDARD 20
-                      CXX_STANDARD_REQUIRED YES 
-                      CXX_EXTENSIONS NO) 
-target_link_libraries(unitTests
-                      PUBLIC
-                         TBB::tbb
-                      PRIVATE
-                         uDataPacketService::libuDataPacketService
-                         gRPC::grpc
-                         gRPC::grpc++
-                         opentelemetry-cpp::otlp_http_metric_exporter
-                         Threads::Threads
-                         Catch2::Catch2 Catch2::Catch2WithMain)
-target_include_directories(unitTests
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
-                           PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
-add_test(NAME unitTests
-         COMMAND unitTests)
-
+if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
+   add_executable(unitTests
+                  testing/grpc.cpp
+                  testing/packetConverter.cpp
+                  testing/sanitizer.cpp)
+   set_target_properties(unitTests PROPERTIES
+                         CXX_STANDARD 20
+                         CXX_STANDARD_REQUIRED YES 
+                         CXX_EXTENSIONS NO) 
+   target_link_libraries(unitTests
+                         PUBLIC
+                            TBB::tbb
+                         PRIVATE
+                            uDataPacketService::libuDataPacketService
+                            gRPC::grpc
+                            gRPC::grpc++
+                            opentelemetry-cpp::otlp_http_metric_exporter
+                            Threads::Threads
+                            Catch2::Catch2 Catch2::Catch2WithMain)
+   target_include_directories(unitTests
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+                              PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+   add_test(NAME unitTests COMMAND $<TARGET_FILE:unitTests>)
+endif()

@@ -261,6 +261,8 @@ export ProgramOptions
     auto subscriberGRPCOptions = getGRPCOptions(propertyTree, "Subscriber");
     subscriberOptions.setGRPCOptions(subscriberGRPCOptions);
     options.subscriberOptions = subscriberOptions;
+    subscriberOptions.setIdentifier(options.applicationName
+                                  + "-import-subscriber");
     
     
 
