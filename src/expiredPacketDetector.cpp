@@ -17,7 +17,6 @@ class ExpiredPacketDetectorOptions::ExpiredPacketDetectorOptionsImpl
 {
 public:
     std::chrono::microseconds mMaxExpiredTime{std::chrono::minutes {5}};
-    std::chrono::seconds mLogBadDataInterval{3600};
 };
 
 /// Constructor
@@ -70,22 +69,6 @@ std::chrono::microseconds
     return pImpl->mMaxExpiredTime;
 }
 
-/// Logging interval
-void ExpiredPacketDetectorOptions::setLogBadDataInterval(
-    const std::chrono::seconds &interval) noexcept
-{
-    pImpl->mLogBadDataInterval = interval;
-    if (interval.count() < 0)
-    {   
-        pImpl->mLogBadDataInterval = std::chrono::seconds {-1};
-    }   
-}
-
-std::chrono::seconds
-    ExpiredPacketDetectorOptions::getLogBadDataInterval() const noexcept
-{
-    return pImpl->mLogBadDataInterval;
-}
 
 /// Destructor
 ExpiredPacketDetectorOptions::~ExpiredPacketDetectorOptions() = default;
@@ -115,8 +98,7 @@ public:
         auto nowMuSeconds = Utilities::getNow<std::chrono::microseconds> ();
         auto earliestTime = nowMuSeconds - mMaxExpiredTime;
         // Packet contains data before the earliest allowable time
-        bool allow = (packetStartTime >= earliestTime) ? true : false;
-        return allow;
+        return (packetStartTime >= earliestTime) ? true : false;
     }
 //private:
     ExpiredPacketDetectorOptions mOptions;

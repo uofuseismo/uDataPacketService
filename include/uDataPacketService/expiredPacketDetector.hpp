@@ -34,14 +34,6 @@ public:
     /// @note By default this rejects data older than 5 minutes from now.
     [[nodiscard]] std::chrono::microseconds getMaxExpiredTime() const noexcept;
    
-    /// @brief Sets the interval at which to log expired data.
-    /// @param[in] logInterval  The interval at which to log data. 
-    /// @note Setting this to a negative value disables logging.
-    void setLogBadDataInterval(const std::chrono::seconds &logInterval) noexcept;
-    /// @result Data streams appearing to have expired data are logged at this
-    ///         interval.  By default bad data is logged every hour.
-    [[nodiscard]] std::chrono::seconds getLogBadDataInterval() const noexcept;
- 
     /// @brief Destructor.
     ~ExpiredPacketDetectorOptions();
 

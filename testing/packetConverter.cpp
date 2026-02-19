@@ -11,11 +11,13 @@
 #include "uDataPacketService/grpcOptions.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
+#include "utilities.hpp"
 
 import PacketConverter;
 
 namespace
 {
+/*
 template<typename T>
 std::string pack(const T *data, const int nSamples, const bool swapBytes)
 {
@@ -50,6 +52,7 @@ std::string pack(const T *data, const int nSamples, const bool swapBytes)
     }
     return result;
 }
+*/
 
 template<typename T>
 UDataPacketImportAPI::V1::DataType toDataType()

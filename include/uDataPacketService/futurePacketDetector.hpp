@@ -3,7 +3,6 @@
 #include <chrono>
 #include <string>
 #include <memory>
-#include <spdlog/spdlog.h>
 namespace UDataPacketServiceAPI::V1
 {
  class Packet;
@@ -34,14 +33,6 @@ public:
     ///       cneter.
     [[nodiscard]] std::chrono::microseconds getMaxFutureTime() const noexcept;
    
-    /// @brief Sets the interval at which to log expired data.
-    /// @param[in] logInterval  The interval at which to log data. 
-    /// @note Setting this to a negative value disables logging.
-    void setLogBadDataInterval(const std::chrono::seconds &logInterval) noexcept;
-    /// @result Data streams appearing to have future data are logged at this
-    ///         interval.
-    [[nodiscard]] std::chrono::seconds getLogBadDataInterval() const noexcept;
- 
     /// @brief Destructor.
     ~FuturePacketDetectorOptions();
 
@@ -66,8 +57,7 @@ class FuturePacketDetector
 {
 public:
     /// @brief Constructs the future data detector.
-    FuturePacketDetector(const FuturePacketDetectorOptions &options,
-                         std::shared_ptr<spdlog::logger> logger);
+    explicit FuturePacketDetector(const FuturePacketDetectorOptions &options);
     /// @brief Copy constructor.
     FuturePacketDetector(const FuturePacketDetector &detector);
     /// @brief Move constructor.

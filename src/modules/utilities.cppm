@@ -50,13 +50,13 @@ export
         = google::protobuf::util::TimeUtil::TimestampToMicroseconds(
              packet.start_time());
     auto nSamples = packet.number_of_samples();
-    auto samplingRate = packet.sampling_rate();
+    double samplingRate = packet.sampling_rate();
     if (samplingRate <= 0)
     {
         throw std::invalid_argument("Sampling rate not positive");
     }
     auto dtMuSec = static_cast<int64_t> (std::round(1000000/samplingRate));
-    auto endTimeMuSec = startTimeMuSec = dtMuSec*(nSamples - 1);
+    auto endTimeMuSec = startTimeMuSec + dtMuSec*(nSamples - 1);
     return std::chrono::microseconds {endTimeMuSec};
 }
 

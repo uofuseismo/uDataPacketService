@@ -4,6 +4,7 @@
 #include <random>
 #include <cmath>
 #include <numeric>
+#include <google/protobuf/util/time_util.h>
 #include "uDataPacketService/expiredPacketDetector.hpp"
 #include "uDataPacketService/futurePacketDetector.hpp"
 #include "uDataPacketService/duplicatePacketDetector.hpp"
@@ -13,6 +14,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include "utilities.hpp"
+
+import Utilities;
+
+using namespace UDataPacketService;
 
 TEST_CASE("UDataPacketService::FuturePacketDetector",
           "[futureData]")
@@ -24,24 +30,38 @@ TEST_CASE("UDataPacketService::FuturePacketDetector",
     identifier.set_channel("HHZ");
     identifier.set_location_code("01");
     UV1::Packet packet;
-/*
-    packet.setStreamIdentifier(identifier);
-    packet.setSamplingRate(1); // 1 sps helps with subsequent test
-    packet.setData(std::vector<int> {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+    *packet.mutable_stream_identifier() = identifier;
+    constexpr double samplingRate{1}; // 1 sps helps with subsequet test on slow machine
+    packet.set_sampling_rate(samplingRate);
+    std::vector<int> data{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    packet.set_data(::pack(data));
+    //packet.setData(std::vector<int> {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+    packet.set_number_of_samples(data.size());
+    packet.set_data_type(UDataPacketServiceAPI::V1::DataType::DATA_TYPE_INTEGER_32);
     constexpr std::chrono::microseconds maxFutureTime{1000};
-    constexpr std::chrono::seconds logBadDataInterval{-1};
-    UDataPacketImport::Sanitizer::FuturePacketDetectorOptions options;
+    FuturePacketDetectorOptions options;
     options.setMaxFutureTime(maxFutureTime);
-    options.setLogBadDataInterval(logBadDataInterval);
     REQUIRE(options.getMaxFutureTime() == maxFutureTime);
-    REQUIRE(options.getLogBadDataInterval().count() < 0);
-    UDataPacketImport::Sanitizer::FuturePacketDetector detector{options};
+    FuturePacketDetector detector{options};
 
+    SECTION("StartTime")
+    {
+        constexpr std::chrono::microseconds startTime{std::chrono::seconds {1}};
+        *packet.mutable_start_time()
+            = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                 startTime.count());
+        auto endTimeMuS = Utilities::getEndTimeInMicroSeconds(packet).count();
+        auto referenceEndTimeMuS = startTime.count()
+            + static_cast<int64_t>
+              (std::round( (data.size() - 1)/samplingRate*1000000 ));
+        REQUIRE(endTimeMuS == referenceEndTimeMuS);
+    }
     SECTION("ValidData")
     {
-        packet.setStartTime(0.0);
+        // 1970 better not be from the future
+        *packet.mutable_start_time()
+            = google::protobuf::util::TimeUtil::NanosecondsToTimestamp(0);
         REQUIRE(detector.allow(packet));
-        REQUIRE(detector.allow(packet.toProtobuf()));
     }
     auto now = std::chrono::high_resolution_clock::now();
     auto nowMuSeconds
@@ -49,55 +69,61 @@ TEST_CASE("UDataPacketService::FuturePacketDetector",
           (now).time_since_epoch();
     SECTION("FutureData")
     {
-        packet.setStartTime(nowMuSeconds - std::chrono::microseconds {100});
+        // Low sampling rate will make this work even running on slow
+        // computers.  Need like 9s to get to this test.
+        auto startTime = nowMuSeconds - std::chrono::microseconds {100};
+        *packet.mutable_start_time()
+            = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(startTime.count());
         REQUIRE(!detector.allow(packet));
-        REQUIRE(!detector.allow(packet.toProtobuf()));
     }
     SECTION("Copy")
     {
         auto detectorCopy = detector;
-        packet.setStartTime(nowMuSeconds - std::chrono::microseconds {100});
+        auto startTime = nowMuSeconds - std::chrono::microseconds {100};
+        *packet.mutable_start_time()
+            = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(startTime.count());
         REQUIRE(!detectorCopy.allow(packet));
-        REQUIRE(!detectorCopy.allow(packet.toProtobuf()));
     }
-*/
 }
 
-/*
 TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
           "[expiredData]")
 {
-    UDataPacketImport::StreamIdentifier identifier;
-    identifier.setNetwork("UU");
-    identifier.setStation("EKU");
-    identifier.setChannel("HHZ");
-    identifier.setLocationCode("01");
-    UDataPacketImport::Packet packet;
-    packet.setStreamIdentifier(identifier);
-    packet.setSamplingRate(100.0);
+    namespace UV1 = UDataPacketServiceAPI::V1;
+    UV1::StreamIdentifier identifier;
+    identifier.set_network("UU");
+    identifier.set_station("ELU");
+    identifier.set_channel("EHZ");
+    identifier.set_location_code("01");
+
+    constexpr double samplingRate{100};
+    UV1::Packet packet;
+    *packet.mutable_stream_identifier() = identifier;
+    packet.set_sampling_rate(samplingRate);
     // N.B. valgrind runs too slow - can either lower the sampling rate or
     // make the packet longer
     std::vector<int64_t> packetData(100);
     std::iota(packetData.begin(), packetData.end(), 1);
-    packet.setData(packetData);
+    packet.set_number_of_samples(packetData.size());
+    packet.set_data_type(UDataPacketServiceAPI::V1::DataType::DATA_TYPE_INTEGER_32);
+    packet.set_data(::pack(packetData));
     constexpr std::chrono::microseconds maxExpiredTime{10000}; // 0.01 seconds (packet duration is 0.99 s)
-    constexpr std::chrono::seconds logBadDataInterval{-1};
-    UDataPacketImport::Sanitizer::ExpiredPacketDetectorOptions options;
+    ExpiredPacketDetectorOptions options;
     options.setMaxExpiredTime(maxExpiredTime);
-    options.setLogBadDataInterval(logBadDataInterval);
     REQUIRE(options.getMaxExpiredTime() == maxExpiredTime);
-    REQUIRE(options.getLogBadDataInterval().count() < 0); 
 
-    UDataPacketImport::Sanitizer::ExpiredPacketDetector detector{options};
+    ExpiredPacketDetector detector{options};
     SECTION("ValidData")
     {
         auto now = std::chrono::high_resolution_clock::now();
         auto nowMuSeconds
             = std::chrono::time_point_cast<std::chrono::microseconds>
               (now).time_since_epoch();
-        packet.setStartTime(nowMuSeconds); //std::chrono::microseconds {nowMuSeconds});
+        auto startTime = nowMuSeconds - std::chrono::microseconds {100};
+        *packet.mutable_start_time()
+            = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                 startTime.count());
         REQUIRE(detector.allow(packet)); // Fails in valgrind if packet is too small
-        REQUIRE(detector.allow(packet.toProtobuf()));
     }
     SECTION("ExpiredData")
     {
@@ -107,11 +133,13 @@ TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
               (now).time_since_epoch();
         // Sometimes it executes too fast so we need to subtract a little
         // tolerance 
-        packet.setStartTime(std::chrono::microseconds {nowMuSeconds}
-                          - maxExpiredTime
-                          - std::chrono::microseconds{1});
+        auto startTime = std::chrono::microseconds {nowMuSeconds}
+                       - maxExpiredTime
+                       - std::chrono::microseconds{1};
+        *packet.mutable_start_time()
+            = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                 startTime.count());
         REQUIRE(!detector.allow(packet));
-        REQUIRE(!detector.allow(packet.toProtobuf()));
     }
     SECTION("Copy")
     {
@@ -120,29 +148,33 @@ TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
         auto nowMuSeconds
             = std::chrono::time_point_cast<std::chrono::microseconds>
               (now).time_since_epoch();
-        packet.setStartTime(std::chrono::microseconds {nowMuSeconds}
-                          - maxExpiredTime
-                          - std::chrono::microseconds{1});
+        auto startTime = std::chrono::microseconds {nowMuSeconds}
+                       - maxExpiredTime
+                       - std::chrono::microseconds{1};
+        *packet.mutable_start_time()
+            = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                 startTime.count());
         REQUIRE(!detectorCopy.allow(packet));
-        REQUIRE(!detectorCopy.allow(packet.toProtobuf()));
     }
 }
 
 TEST_CASE("UDataPacketImport::Sanitizer::DuplicatePacketDetector",
           "[duplicateData]")
 {
+    namespace UV1 = UDataPacketServiceAPI::V1;
     // Random packet sizes
     std::random_device randomDevice;
     std::mt19937 generator(188382);
     std::uniform_int_distribution<> uniformDistribution(250, 350);
 
     // Define a base packet
-    UDataPacketImport::StreamIdentifier identifier;
-    identifier.setNetwork("UU");
-    identifier.setStation("CTU");
-    identifier.setChannel("HHZ");
-    identifier.setLocationCode("01");
+    UV1::StreamIdentifier identifier;
+    identifier.set_network("UU");
+    identifier.set_station("CTU");
+    identifier.set_channel("HHZ");
+    identifier.set_location_code("01");
 
+/*
     const double samplingRate{100};
     UDataPacketImport::Packet packet;
     packet.setStreamIdentifier(identifier);
@@ -290,6 +322,6 @@ TEST_CASE("UDataPacketImport::Sanitizer::DuplicatePacketDetector",
             CHECK(!detector.allow(thisPacket));
         }
     }   
-}
 */
+}
 
