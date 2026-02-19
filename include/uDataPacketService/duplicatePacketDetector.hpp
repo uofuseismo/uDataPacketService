@@ -1,17 +1,13 @@
-#ifndef UDATA_PACKET_IMPORT_SANITIZER_DUPLICATE_PACKET_DETECTOR_HPP
-#define UDATA_PACKET_IMPORT_SANITIZER_DUPLICATE_PACKET_DETECTOR_HPP
+#ifndef UDATA_PACKET_SERVICE_DUPLICATE_PACKET_DETECTOR_HPP
+#define UDATA_PACKET_SERVICE_DUPLICATE_PACKET_DETECTOR_HPP
 #include <chrono>
 #include <string>
 #include <memory>
-namespace UDataPacketImport
+namespace UDataPacketServiceAPI::V1
 {
  class Packet;
 }
-namespace UDataPacketImport::GRPC::V1
-{
- class Packet;
-}
-namespace UDataPacketImport::Sanitizer
+namespace UDataPacketService
 {
 
 /// @class DuplicatePacketDetectorOptions duplicatePacketDetectorOptions.hpp
@@ -84,15 +80,10 @@ public:
 
     /// @param[in] packet   The packet to test.
     /// @result True indicates the data does not appear to be a duplicate.
-    [[nodiscard]] bool allow(const UDataPacketImport::GRPC::V1::Packet &packet) const;
-    /// @param[in] packet   The packet to test.
-    /// @result True indicates the data does not appear to be a duplicate.
-    [[nodiscard]] bool allow(const UDataPacketImport::Packet &packet) const;
+    [[nodiscard]] bool allow(const UDataPacketServiceAPI::V1::Packet &packet) const;
 
     /// @result True indicates the data does not appear to be a duplicate.
-    [[nodiscard]] bool operator()(const UDataPacketImport::GRPC::V1::Packet &packet) const;
-    /// @result True indicates the data does not appear to be a duplicate.
-    [[nodiscard]] bool operator()(const UDataPacketImport::Packet &packet) const;
+    [[nodiscard]] bool operator()(const UDataPacketServiceAPI::V1::Packet &packet) const;
 
     /// @brief Destructor.
     ~DuplicatePacketDetector();

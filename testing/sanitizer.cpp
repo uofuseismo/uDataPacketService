@@ -20,10 +20,26 @@ import Utilities;
 
 using namespace UDataPacketService;
 
-TEST_CASE("UDataPacketService::FuturePacketDetector",
-          "[futureData]")
+TEST_CASE("UDataPacketService::FuturePacketDetector", "[futureDataOptions]")
+{
+    constexpr std::chrono::microseconds maxFutureTime{1000};
+    FuturePacketDetectorOptions options;
+    options.setMaxFutureTime(maxFutureTime);
+    REQUIRE(options.getMaxFutureTime() == maxFutureTime);
+}
+
+TEST_CASE("UDataPacketService::ExpiredPacketDetector", "[expiredDataOptions]")
+{       
+    constexpr std::chrono::microseconds maxExpiredTime{10000};
+    ExpiredPacketDetectorOptions options;
+    options.setMaxExpiredTime(maxExpiredTime);
+    REQUIRE(options.getMaxExpiredTime() == maxExpiredTime);
+}
+
+TEST_CASE("UDataPacketService::FuturePacketDetector", "[futureData]")
 {
     namespace UV1 = UDataPacketServiceAPI::V1;
+    constexpr auto dataType{UV1::DataType::DATA_TYPE_INTEGER_32};
     UV1::StreamIdentifier identifier;
     identifier.set_network("UU");
     identifier.set_station("MOUT");
@@ -35,13 +51,11 @@ TEST_CASE("UDataPacketService::FuturePacketDetector",
     packet.set_sampling_rate(samplingRate);
     std::vector<int> data{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     packet.set_data(::pack(data));
-    //packet.setData(std::vector<int> {1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
     packet.set_number_of_samples(data.size());
-    packet.set_data_type(UDataPacketServiceAPI::V1::DataType::DATA_TYPE_INTEGER_32);
+    packet.set_data_type(dataType);
     constexpr std::chrono::microseconds maxFutureTime{1000};
     FuturePacketDetectorOptions options;
     options.setMaxFutureTime(maxFutureTime);
-    REQUIRE(options.getMaxFutureTime() == maxFutureTime);
     FuturePacketDetector detector{options};
 
     SECTION("StartTime")
@@ -86,10 +100,10 @@ TEST_CASE("UDataPacketService::FuturePacketDetector",
     }
 }
 
-TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
-          "[expiredData]")
+TEST_CASE("UDataPacketService::ExpiredPacketDetector", "[expiredData]")
 {
     namespace UV1 = UDataPacketServiceAPI::V1;
+    constexpr auto dataType{UV1::DataType::DATA_TYPE_INTEGER_32};
     UV1::StreamIdentifier identifier;
     identifier.set_network("UU");
     identifier.set_station("ELU");
@@ -105,12 +119,11 @@ TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
     std::vector<int64_t> packetData(100);
     std::iota(packetData.begin(), packetData.end(), 1);
     packet.set_number_of_samples(packetData.size());
-    packet.set_data_type(UDataPacketServiceAPI::V1::DataType::DATA_TYPE_INTEGER_32);
+    packet.set_data_type(dataType);
     packet.set_data(::pack(packetData));
     constexpr std::chrono::microseconds maxExpiredTime{10000}; // 0.01 seconds (packet duration is 0.99 s)
     ExpiredPacketDetectorOptions options;
     options.setMaxExpiredTime(maxExpiredTime);
-    REQUIRE(options.getMaxExpiredTime() == maxExpiredTime);
 
     ExpiredPacketDetector detector{options};
     SECTION("ValidData")
@@ -158,10 +171,10 @@ TEST_CASE("UDataPacketImport::Sanitizer::ExpiredPacketDetector",
     }
 }
 
-TEST_CASE("UDataPacketImport::Sanitizer::DuplicatePacketDetector",
-          "[duplicateData]")
+TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
 {
     namespace UV1 = UDataPacketServiceAPI::V1;
+    constexpr auto dataType{UV1::DataType::DATA_TYPE_INTEGER_32};
     // Random packet sizes
     std::random_device randomDevice;
     std::mt19937 generator(188382);
@@ -174,91 +187,102 @@ TEST_CASE("UDataPacketImport::Sanitizer::DuplicatePacketDetector",
     identifier.set_channel("HHZ");
     identifier.set_location_code("01");
 
-/*
     const double samplingRate{100};
-    UDataPacketImport::Packet packet;
-    packet.setStreamIdentifier(identifier);
-    packet.setSamplingRate(samplingRate); 
+    UV1::Packet packet;
+    *packet.mutable_stream_identifier() = identifier;
+    packet.set_sampling_rate(samplingRate); 
 
     // Define a start time
     auto now = std::chrono::high_resolution_clock::now();
     auto nowSeconds
-        = std::chrono::time_point_cast<std::chrono::seconds>
+        = std::chrono::time_point_cast<std::chrono::microseconds>
           (now).time_since_epoch();
-    double startTime = nowSeconds.count() - 600; // Don't mess with future
-    packet.setStartTime(startTime);
+    constexpr std::chrono::microseconds seconds600{600};
+    auto startTime = nowSeconds - seconds600;
 
     // Business as usual - all data comes in on time and in order
     SECTION("All good data")
     {   
-        const std::chrono::seconds logBadDataInterval{0};
         const int circularBufferSize{15};
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetectorOptions options;
+        UDataPacketService::DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
-        options.setLogBadDataInterval(logBadDataInterval);
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetector detector{options};
+        UDataPacketService::DuplicatePacketDetector detector{options};
         int cumulativeSamples{0}; 
         int nExamples = 2*circularBufferSize;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {
-            auto packetStartTime = startTime + cumulativeSamples/samplingRate;
+            auto packetStartTime = startTime 
+                + std::chrono::microseconds {static_cast<int64_t>
+                      (std::round(cumulativeSamples/samplingRate*1000000))};
             std::vector<int> data(uniformDistribution(generator), 0); 
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size()); 
-            packet.setStartTime(packetStartTime);
-            packet.setData(data);
+            packet.set_number_of_samples(data.size());
+            packet.set_data_type(dataType);
+            packet.set_data(::pack(data));
+            *packet.mutable_start_time()
+                = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                     packetStartTime.count());
             REQUIRE(detector.allow(packet));
         }
     }   
 
     SECTION("Every other is a duplicate")
     {   
-        const std::chrono::seconds logBadDataInterval{-1};
         const int circularBufferSize{15};
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetectorOptions options;
+        DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
-        options.setLogBadDataInterval(logBadDataInterval);
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetector detector{options};
+        DuplicatePacketDetector detector{options};
         int cumulativeSamples{0}; 
         int nExamples = 2*circularBufferSize;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {
-            auto packetStartTime = startTime + cumulativeSamples/samplingRate;
+            auto packetStartTime = startTime 
+                + std::chrono::microseconds {static_cast<int64_t>
+                      (std::round(cumulativeSamples/samplingRate*1000000))};
             std::vector<int> data(uniformDistribution(generator), 0); 
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size()); 
-            packet.setStartTime(packetStartTime);
-            packet.setData(data);
-            CHECK(detector.allow(packet.toProtobuf()));
+            packet.set_number_of_samples(data.size());
+            packet.set_data_type(dataType);
+            packet.set_data(::pack(data));
+            *packet.mutable_start_time()
+                = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                     packetStartTime.count());
+            CHECK(detector.allow(packet));
             CHECK(!detector.allow(packet));
         }
     }
 
     SECTION("Out of order with duplicates")
     {
-        const std::chrono::seconds logBadDataInterval{-1};
         const int circularBufferSize{15};
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetectorOptions options;
+        DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
-        options.setLogBadDataInterval(logBadDataInterval);
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetector detector{options};
+        DuplicatePacketDetector detector{options};
 
-        std::vector<UDataPacketImport::Packet> packets;
+        std::vector<UDataPacketServiceAPI::V1::Packet> packets;
         int cumulativeSamples{0};
         for (int iPacket = 0; iPacket < circularBufferSize; iPacket++)
         {
-            auto packetStartTime = startTime + cumulativeSamples/samplingRate;
+            auto packetStartTime = startTime 
+                + std::chrono::microseconds {static_cast<int64_t>
+                      (std::round(cumulativeSamples/samplingRate*1000000))};
             std::vector<int> data(uniformDistribution(generator), 0);
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size());
-            packet.setStartTime(packetStartTime);
-            packet.setData(data);
+            packet.set_number_of_samples(data.size());
+            packet.set_data_type(dataType);
+            packet.set_data(::pack(data));
+            *packet.mutable_start_time()
+                = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                     packetStartTime.count());
             packets.push_back(packet);
         }
         std::shuffle(packets.begin(), packets.end(), generator);
@@ -267,51 +291,56 @@ TEST_CASE("UDataPacketImport::Sanitizer::DuplicatePacketDetector",
         {
             //std::cout << std::setprecision(16) << "hey " << outOfOrderPacket.getStartTime().count()*1.e-6 << std::endl;
             REQUIRE(detector.allow(outOfOrderPacket));
-            CHECK(!detector.allow(outOfOrderPacket.toProtobuf()));
         }
     }
 
     SECTION("Timing slips")
     {   
-        const std::chrono::seconds logBadDataInterval{-1};
         const int circularBufferSize{15};
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetectorOptions options;
+        DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
-        options.setLogBadDataInterval(logBadDataInterval);
 
-        UDataPacketImport::Sanitizer::DuplicatePacketDetector detector{options};
+        UDataPacketService::DuplicatePacketDetector detector{options};
 
         int cumulativeSamples{0}; 
         // Load it
         int nExamples = circularBufferSize;
-        std::vector<UDataPacketImport::Packet> packets;
+        std::vector<UDataPacketServiceAPI::V1::Packet> packets;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {   
-            auto packetStartTime = startTime + cumulativeSamples/samplingRate;
+            auto packetStartTime = startTime 
+                + std::chrono::microseconds {static_cast<int64_t>
+                      (std::round(cumulativeSamples/samplingRate*1000000))};
             std::vector<int> data(uniformDistribution(generator), 0); 
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size());
-            packet.setStartTime(packetStartTime);
-            packet.setData(data);
-            if (iPacket%2 == 0)
-            {
-                CHECK(detector.allow(packet.toProtobuf()));
-            }
-            else
-            {
-                CHECK(detector.allow(packet));
-            }
+            packet.set_number_of_samples(data.size());
+            packet.set_data_type(dataType);
+            packet.set_data(::pack(data));
+            *packet.mutable_start_time()
+                = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                     packetStartTime.count());
+            CHECK(detector.allow(packet));
             packets.push_back(packet);
         }   
+        REQUIRE(static_cast<int> (packets.size()) == nExamples);
 
         // Throw some timing slips in there
         auto firstPacket = packets.front();
-        firstPacket.setStartTime(
-            firstPacket.getStartTime().count()*1.e-6
-          - (firstPacket.getNumberOfSamples() - 1)
-           /firstPacket.getSamplingRate()/2.);
+        auto firstStartTimePerturbed
+               = google::protobuf::util::TimeUtil::TimestampToMicroseconds(
+                   firstPacket.start_time())*1.e-6
+               - (firstPacket.number_of_samples() - 1)
+                /firstPacket.sampling_rate()/2.0;
+        auto firstStartTimePerturbedMuS
+            = static_cast<int64_t>
+              (std::round(firstStartTimePerturbed*1000000));
+        *firstPacket.mutable_start_time()
+            = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                 firstStartTimePerturbedMuS);
         CHECK(!detector.allow(firstPacket));
+/*
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {   
             auto thisPacket = packets.at(iPacket);
@@ -321,7 +350,7 @@ TEST_CASE("UDataPacketImport::Sanitizer::DuplicatePacketDetector",
             thisPacket.setStartTime(packetStartTime);
             CHECK(!detector.allow(thisPacket));
         }
-    }   
 */
+    }   
 }
 

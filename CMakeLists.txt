@@ -44,6 +44,7 @@ set(LIBRARY_SRC
     src/subscriber.cpp
     src/futurePacketDetector.cpp
     src/expiredPacketDetector.cpp
+    src/duplicatePacketDetector.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
     )
