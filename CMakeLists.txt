@@ -37,6 +37,9 @@ set(EXPORT_PROTO_SRC
     uDataPacketServiceAPI/v1/data_type.proto
     uDataPacketServiceAPI/v1/stream_identifier.proto
     uDataPacketServiceAPI/v1/packet.proto
+    uDataPacketServiceAPI/v1/subscription_request.proto
+    uDataPacketServiceAPI/v1/subscribe_to_all_request.proto
+    uDataPacketServiceAPI/v1/broadcast.proto
     )
 set(LIBRARY_SRC
     src/grpcOptions.cpp
@@ -56,7 +59,8 @@ set(MODULE_FILES
     src/modules/packetConverter.cppm
     src/modules/logger.cppm
     src/modules/otelSpdlogSink.cppm
-    src/modules/utilities.cppm)
+    src/modules/utilities.cppm
+    src/modules/asyncWriter.cppm)
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})
 add_library(uDataPacketService::libuDataPacketService ALIAS libuDataPacketService)
