@@ -9,7 +9,7 @@ import "uDataPacketServiceAPI/v1/stream_identifier.proto";
  */
 message SubscribeToAllRequest {
     string identifier = 1 [default = ""]; /// A request identifier.
-    Duration future_tolerance = 2; /// Packets whose end time exeeds the current time + the future tolerance will not be sent.
-    Duration latency_tolerance = 3; /// Pakets whose start times are less than the current time - the latency tolererance will not be sent.
-    bool remove_duplicates = 4 [default = True]; /// If true then the server will attempt to deduplicate packets.  Duplicates may still exist. 
+    google.protobuf.Duration future_tolerance = 2; /// Packets whose end time exeeds the current time + the future tolerance will not be sent.  Typically this should be zero.
+    google.protobuf.Duration latency_tolerance = 3; /// Pakets whose start times are less than the current time - the latency tolererance will not be sent.  Typically this should be a few minutes but this can be very large if you want to collect all data.
+    bool remove_duplicates = 4 [default = true]; /// If true then the server will attempt to deduplicate packets.  Duplicates may still exist. 
 }
