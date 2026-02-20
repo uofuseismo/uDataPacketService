@@ -36,6 +36,24 @@ TEST_CASE("UDataPacketService::ExpiredPacketDetector", "[expiredDataOptions]")
     REQUIRE(options.getMaxExpiredTime() == maxExpiredTime);
 }
 
+TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateDataOptions]")
+{
+    SECTION("cb size")
+    {
+        constexpr int circularBufferSize{129};
+        DuplicatePacketDetectorOptions options;
+        options.setCircularBufferSize(circularBufferSize);
+        REQUIRE(*options.getCircularBufferSize() == circularBufferSize);
+    }
+    SECTION("cb duration")
+    {
+        constexpr std::chrono::seconds duration{90};
+        DuplicatePacketDetectorOptions options;
+        options.setCircularBufferDuration(duration);
+        REQUIRE(*options.getCircularBufferDuration() == duration); 
+    }
+}
+
 TEST_CASE("UDataPacketService::FuturePacketDetector", "[futureData]")
 {
     namespace UV1 = UDataPacketServiceAPI::V1;
@@ -205,10 +223,10 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
     {   
         const int circularBufferSize{15};
 
-        UDataPacketService::DuplicatePacketDetectorOptions options;
+        DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
 
-        UDataPacketService::DuplicatePacketDetector detector{options};
+        DuplicatePacketDetector detector{options};
         int cumulativeSamples{0}; 
         int nExamples = 2*circularBufferSize;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
@@ -267,7 +285,7 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
 
         DuplicatePacketDetector detector{options};
 
-        std::vector<UDataPacketServiceAPI::V1::Packet> packets;
+        std::vector<UV1::Packet> packets;
         int cumulativeSamples{0};
         for (int iPacket = 0; iPacket < circularBufferSize; iPacket++)
         {
@@ -301,12 +319,12 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
         DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
 
-        UDataPacketService::DuplicatePacketDetector detector{options};
+        DuplicatePacketDetector detector{options};
 
         int cumulativeSamples{0}; 
         // Load it
         int nExamples = circularBufferSize;
-        std::vector<UDataPacketServiceAPI::V1::Packet> packets;
+        std::vector<UV1::Packet> packets;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {   
             auto packetStartTime = startTime 
@@ -340,17 +358,26 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
             = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
                  firstStartTimePerturbedMuS);
         CHECK(!detector.allow(firstPacket));
-/*
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {   
             auto thisPacket = packets.at(iPacket);
-            double packetStartTime = thisPacket.getStartTime().count()*1.e-6
-                                   + (thisPacket.getNumberOfSamples() - 1)
-                                     /thisPacket.getSamplingRate()/2;
-            thisPacket.setStartTime(packetStartTime);
+            auto thisStartTimePerturbed
+                = google::protobuf::util::TimeUtil::TimestampToMicroseconds(
+                     thisPacket.start_time())*1.e-6
+                   - (thisPacket.number_of_samples() - 1)
+                     /thisPacket.sampling_rate()/2.0;
+            auto thisStartTimePerturbedMuS
+                = static_cast<int64_t>
+                  (std::round(thisStartTimePerturbed*1000000));
+            *thisPacket.mutable_start_time()
+                = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                      thisStartTimePerturbedMuS);
+            //double packetStartTime = thisPacket.getStartTime().count()*1.e-6
+            //                       + (thisPacket.getNumberOfSamples() - 1)
+            //                         /thisPacket.getSamplingRate()/2;
+            //thisPacket.setStartTime(packetStartTime);
             CHECK(!detector.allow(thisPacket));
         }
-*/
     }   
 }
 

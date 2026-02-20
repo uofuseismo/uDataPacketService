@@ -14,7 +14,6 @@
 #include <google/protobuf/util/time_util.h>
 #include "uDataPacketService/duplicatePacketDetector.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
-//#include "toName.hpp"
 
 import Utilities;
 
@@ -26,7 +25,6 @@ namespace
 struct DataPacketHeader
 {
 public:
-    DataPacketHeader() = default;
     explicit DataPacketHeader(
         const UDataPacketServiceAPI::V1::Packet &packet)
     {
@@ -424,10 +422,10 @@ bool DuplicatePacketDetector::allow(
     const UDataPacketServiceAPI::V1::Packet &packet) const
 {
     // Construct the trace header for the circular buffer
-    ::DataPacketHeader header;
+    std::unique_ptr<::DataPacketHeader> header;
     try
     {
-        header = ::DataPacketHeader {packet}; // Copy elision
+        header = std::make_unique<::DataPacketHeader> (packet);
     }
     catch (const std::exception &e)
     {
@@ -436,7 +434,7 @@ bool DuplicatePacketDetector::allow(
           + std::string {e.what()} + "; Not allowing...");
         return false;
     }
-    return pImpl->allow(header); // Throws
+    return pImpl->allow(*header); // Throws
 }
 
 bool DuplicatePacketDetector::operator()(

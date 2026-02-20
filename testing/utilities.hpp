@@ -2,6 +2,7 @@
 #define TESTING_UTILITIES_HPP
 #include <bit>
 #include <vector>
+#include <algorithm>
 namespace
 {
 template<typename T>
