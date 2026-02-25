@@ -6,6 +6,8 @@ module;
 #endif
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
+#include "uDataPacketService/stream.hpp"
+#include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketServiceAPI/v1/broadcast.grpc.pb.h"
 
 

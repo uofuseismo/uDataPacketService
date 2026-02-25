@@ -3,7 +3,7 @@ project(uDataPacketService VERSION 0.0.1 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
-option(BUILD_FOR_DEBIAN "Build debian container for deployment" OFF)
+option(BUILD_CONTAINER "Build container for deployment" OFF)
 option(BUILD_TESTS "Compile unit tests" ON) 
 include(GenerateExportHeader)
 
@@ -48,10 +48,14 @@ set(LIBRARY_SRC
     src/futurePacketDetector.cpp
     src/expiredPacketDetector.cpp
     src/duplicatePacketDetector.cpp
+    src/stream.cpp
+    src/streamOptions.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
     )
 set(HEADER_FILES
+    include/uDataPacketService/stream.hpp
+    include/uDataPacketService/streamOptions.hpp
     include/uDataPacketService/subscriber.hpp
     include/uDataPacketService/subscriberOptions.hpp)
 set(MODULE_FILES
@@ -60,7 +64,9 @@ set(MODULE_FILES
     src/modules/logger.cppm
     src/modules/otelSpdlogSink.cppm
     src/modules/utilities.cppm
-    src/modules/asyncWriter.cppm)
+    src/modules/asyncWriter.cppm
+    #src/modules/stream.cppm
+    )
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})
 add_library(uDataPacketService::libuDataPacketService ALIAS libuDataPacketService)
@@ -142,7 +148,8 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
    add_executable(unitTests
                   testing/grpc.cpp
                   testing/packetConverter.cpp
-                  testing/sanitizer.cpp)
+                  testing/sanitizer.cpp
+                  testing/stream.cpp)
    set_target_properties(unitTests PROPERTIES
                          CXX_STANDARD 20
                          CXX_STANDARD_REQUIRED YES 
