@@ -15,7 +15,7 @@ import PacketConverter;
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
 #include <absl/log/initialize.h>
-#include <tbb/concurrent_queue.h>
+#include <oneapi/tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "uDataPacketImportAPI/v1/packet.pb.h"
@@ -224,7 +224,7 @@ public:
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::unique_ptr<UDataPacketService::Subscriber> mSubscriber{nullptr};
     std::vector<std::future<void>> mFutures;
-    tbb::concurrent_bounded_queue<UDataPacketServiceAPI::V1::Packet>
+    oneapi::tbb::concurrent_bounded_queue<UDataPacketServiceAPI::V1::Packet>
         mImportQueue;
     std::function<void(UDataPacketImportAPI::V1::Packet &&)>
         mAddPacketCallbackFunction

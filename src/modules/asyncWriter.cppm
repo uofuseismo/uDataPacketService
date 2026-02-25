@@ -6,6 +6,7 @@ module;
 #endif
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
+#include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketServiceAPI/v1/broadcast.grpc.pb.h"
@@ -47,10 +48,16 @@ public:
     (
         grpc::CallbackServerContext *context,
         const UDataPacketServiceAPI::V1::SubscriptionRequest *request,
+        std::shared_ptr
+        <
+           UDataPacketService::SubscriptionManager<grpc::CallbackServerContext>
+        >
+           subscriptionManager,
         std::shared_ptr<spdlog::logger> logger,
         std::atomic<bool> *keepRunning
     ) :
         mContext(context),
+        mSubscriptionManager(subscriptionManager),
         mLogger(logger),
         mKeepRunning(keepRunning)
     {
@@ -80,12 +87,10 @@ public:
         }
         if (mContext)
         {
-/*
-// TODO uncomment
             // The context is still valid so try to remove it from the
-            // subscriptoins.  This can be the case whether the server is
+            // subscriptions.  This can be the case whether the server is
             // shutting down or the client bailed.
-            mSubscriptionManager->unsubscribe(mContext);
+//            mSubscriptionManager->unsubscribe(mContext);
             mSubscribed = false;
             if (mContext->IsCancelled())
             {
@@ -101,7 +106,6 @@ public:
                     mPeer);
                 Finish(grpc::Status::OK);
             }
-*/
         }
         else
         {
@@ -110,6 +114,10 @@ public:
         }
     }
     grpc::CallbackServerContext *mContext{nullptr};
+    std::shared_ptr
+    <
+        UDataPacketService::SubscriptionManager<grpc::CallbackServerContext>
+    > mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     std::string mPeer;

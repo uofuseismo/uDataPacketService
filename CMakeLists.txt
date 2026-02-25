@@ -50,6 +50,7 @@ set(LIBRARY_SRC
     src/duplicatePacketDetector.cpp
     src/stream.cpp
     src/streamOptions.cpp
+    src/subscriptionManager.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
     )
@@ -66,7 +67,6 @@ set(MODULE_FILES
     src/modules/otelSpdlogSink.cppm
     src/modules/utilities.cppm
     src/modules/asyncWriter.cppm
-    #src/modules/stream.cppm
     )
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})

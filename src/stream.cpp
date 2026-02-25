@@ -231,7 +231,11 @@ public:
     mutable std::mutex mMutex;
     StreamOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    tbb::concurrent_map<uintptr_t, std::queue<UDataPacketServiceAPI::V1::Packet>> mSubscribersMap;
+    oneapi::tbb::concurrent_map
+    <
+        uintptr_t,
+        std::queue<UDataPacketServiceAPI::V1::Packet>
+    > mSubscribersMap;
     UDataPacketServiceAPI::V1::Packet mMostRecentPacket;
     std::string mStreamIdentifier;
     size_t mMaximumQueueSize{8};
