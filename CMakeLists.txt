@@ -56,6 +56,7 @@ set(LIBRARY_SRC
 set(HEADER_FILES
     include/uDataPacketService/stream.hpp
     include/uDataPacketService/streamOptions.hpp
+    include/uDataPacketService/subscriptionManager.hpp
     include/uDataPacketService/subscriber.hpp
     include/uDataPacketService/subscriberOptions.hpp)
 set(MODULE_FILES
