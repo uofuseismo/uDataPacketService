@@ -127,6 +127,7 @@ TEST_CASE("UDataPacketService", "[stream]")
 
         auto packet = inputPackets.at(0);
         UDataPacketService::Stream stream{std::move(packet), options};
+        REQUIRE(stream.getIdentifier() == "UU.CTU.HHZ.01");
 
         auto myThreadID = std::this_thread::get_id();
         auto subscriberID1 = reinterpret_cast<uintptr_t> (&myThreadID);

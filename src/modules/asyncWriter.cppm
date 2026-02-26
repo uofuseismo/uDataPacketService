@@ -57,6 +57,7 @@ public:
         std::atomic<bool> *keepRunning
     ) :
         mContext(context),
+        mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
         mSubscriptionManager(subscriptionManager),
         mLogger(logger),
         mKeepRunning(keepRunning)
@@ -80,7 +81,7 @@ public:
         {   
             if (!mSubscribed)
             {   
-                mSubscriptionManager->unsubscribeFromAll(mContext);
+                mSubscriptionManager->unsubscribeFromAll(mContextAddress);
                 mSubscribed = false;
             }   
         }   
@@ -97,10 +98,11 @@ public:
     void OnCancel() override
     {
         SPDLOG_LOGGER_INFO(mLogger,
-                           "Subscribe to all RPC cancelled for {}", mPeer);
+                           "Subscribe to all RPC cancelled for {} ({})",
+                           mPeer, std::to_string(mContextAddress));
         if (mSubscribed)
         {
-            mSubscriptionManager->unsubscribeFromAll(mContext);
+            mSubscriptionManager->unsubscribeFromAll(mContextAddress);
             mSubscribed = false;
         }
     }
@@ -132,17 +134,15 @@ public:
             // Try to get more packets to write while I `wait.'
             if (mPacketsQueue.empty())
             {
-/*
                 try
                 {
                     auto packetsBuffer
-                        = mManager->getNextPacketsFromAllSubscriptions(
-                              mContext);
+                         = mSubscriptionManager->getPackets(mContextAddress);
                     for (auto &packet : packetsBuffer)
                     {
                         if (mPacketsQueue.size() > mMaximumQueueSize)
                         {
-                            spdlog::warn(
+                            SPDLOG_LOGGER_WARN(mLogger,
                                "RPC writer queue exceeded - popping element");
                             mPacketsQueue.pop();
                          }
@@ -151,10 +151,10 @@ public:
                 }
                 catch (const std::exception &e)
                 {
-                    spdlog::warn("Failed to get next packet because "
-                               + std::string {e.what()});
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                       "Failed to get next packet because {}",
+                                       std::string {e.what()});
                 }
-*/
             }
 
             // No new packets were acquired and I'm not waiting for a write.
@@ -193,6 +193,7 @@ public:
         }
     }
     grpc::CallbackServerContext *mContext{nullptr};
+    uintptr_t mContextAddress;
     std::shared_ptr
     <
         UDataPacketService::SubscriptionManager
@@ -200,9 +201,10 @@ public:
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     std::string mPeer;
-    bool mSubscribed{false};
+    size_t mMaximumQueueSize{2048};
     std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;
     std::chrono::milliseconds mTimeOut{20};
+    bool mSubscribed{false};
     bool mWriteInProgress{false};
 };
 

@@ -9,6 +9,7 @@
 #include <oneapi/tbb/concurrent_set.h>
 #include <grpcpp/server.h>
 #include "uDataPacketService/subscriptionManager.hpp"
+#include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
@@ -20,7 +21,15 @@ using namespace UDataPacketService;
 class SubscriptionManager::SubscriptionManagerImpl
 {
 public:
-    // Add packet (and, if it is a new stream, update subscribers)
+    SubscriptionManagerImpl(const SubscriptionManagerOptions &options,
+                            std::shared_ptr<spdlog::logger> logger) :
+        mOptions(options),
+        mLogger(logger),
+        mStreamOptions(mOptions.getStreamOptions())
+    {
+    }
+ 
+    /// Add packet (and, if it is a new stream, update subscribers)
     void enqueuePacket(UDataPacketServiceAPI::V1::Packet &&packet)
     {
         auto streamIdentifier = Utilities::toName(packet);
@@ -62,13 +71,21 @@ public:
         auto [jdx, inserted] = mStreamsMap.insert(std::move(newStream));
         if (inserted)
         {
+            auto streamIdentifier = jdx->second->getIdentifier();
             // Whoever was subscribed to all is not subscribed to this stream
             for (const auto &pendingSubscription : mPendingSubscribeToAllRequests)
             {
                 auto contextAddress
                     = reinterpret_cast<uintptr_t> (pendingSubscription);
                 constexpr bool enqueueNextPacket{true};
-                if (!jdx->second->subscribe(contextAddress, enqueueNextPacket))
+                if (jdx->second->subscribe(contextAddress, enqueueNextPacket))
+                {
+                    // Successful subscribe to all; add to active
+                    // subscriptions 
+                    addToActiveSubscriptionsMap(contextAddress,
+                                                streamIdentifier);
+                }
+                else
                 {
                     SPDLOG_LOGGER_WARN(mLogger,
                                        "Failed to subscribe {} to {}",
@@ -85,7 +102,13 @@ public:
                     auto contextAddress
                         = reinterpret_cast<uintptr_t> (pendingSubscription.first);
                     constexpr bool enqueueNextPacket{true}; 
-                    if (!jdx->second->subscribe(contextAddress, enqueueNextPacket))
+                    if (jdx->second->subscribe(contextAddress, enqueueNextPacket))
+                    {
+                        // Successful subscribe; add to the active subscriptions
+                        addToActiveSubscriptionsMap(contextAddress,
+                                                    streamIdentifier);
+                    }
+                    else
                     {
                         SPDLOG_LOGGER_WARN(mLogger,
                                            "Failed to subscribe {} to {}",
@@ -124,6 +147,183 @@ public:
         }
     }
 
+    /// Context is subscribing to set of streams
+    void subscribe(
+        uintptr_t contextAddress, 
+        const std::set<UDataPacketServiceAPI::V1::StreamIdentifier>
+            &streamIdentifiers)
+    {
+        if (streamIdentifiers.empty()){return;}
+        for (const auto &identifier : streamIdentifiers)
+        {
+            auto streamIdentifier = Utilities::toName(identifier);
+            auto idx = mStreamsMap.find(streamIdentifier);
+            if (idx != mStreamsMap.end())
+            {
+                // Stream exists - add it
+                try
+                {
+                    // I'm joining late
+                    constexpr bool enqueueNextPacket{false}; 
+                    if (idx->second->subscribe(contextAddress,
+                                               enqueueNextPacket))
+                    {
+                        addToActiveSubscriptionsMap(contextAddress,
+                                                    streamIdentifier);
+                        SPDLOG_LOGGER_DEBUG(mLogger,
+                                            "Subscribed {} to {}",
+                                            std::to_string(contextAddress),
+                                            streamIdentifier);
+                    }
+                    else
+                    {
+                        SPDLOG_LOGGER_DEBUG(mLogger,
+                                            "Failed to subscribe {} to {}",
+                                            std::to_string(contextAddress),
+                                            streamIdentifier);
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                      "Failed to subscribe {} to {} because {}",
+                                      std::to_string(contextAddress),
+                                      streamIdentifier,
+                                      std::string {e.what()});                          
+                }
+            }
+            else
+            {
+                // Stream doesn't exist yet, add stream to pending subscriptions
+                // Check our pending subscriptions for this context
+                auto jdx = mPendingSubscriptionRequests.find(contextAddress);
+                if (jdx != mPendingSubscriptionRequests.end())
+                {
+                    // The context already has this subscription pending
+                    if (jdx->second.contains(streamIdentifier))
+                    {
+                        SPDLOG_LOGGER_DEBUG(mLogger,
+                                  "{} already has a pending subscription for {}",
+                                  std::to_string(contextAddress),
+                                  streamIdentifier);
+                    }
+                    else
+                    {
+                        // Now it's pending
+                        jdx->second.insert(streamIdentifier);
+                    }
+                }
+                else
+                {
+                    // Need a new context with a new pending subscription
+                    std::set<std::string> tempSet{streamIdentifier};
+                    mPendingSubscriptionRequests.insert(
+                        std::pair {contextAddress, std::move(tempSet)}
+                    );
+                }
+
+            }
+        } // Loop on desired streams
+    }
+
+    /// Context is subscribe to all streams
+    void subscribeToAll(uintptr_t contextAddress)
+    {
+        if (mPendingSubscribeToAllRequests.contains(contextAddress))
+        {
+            SPDLOG_LOGGER_INFO(mLogger,
+                               "{} already waiting to subscribe to all",
+                               std::to_string (contextAddress));
+            return;
+        }
+        // Attach to all streams
+        for (auto &stream : mStreamsMap)
+        {
+            auto streamIdentifier = stream.second->getIdentifier();
+#ifndef NDEBUG
+            assert(!streamIdentifier.empty());
+#endif
+            try
+            {
+                // I'm joining late - don't load packet that existed before me
+                constexpr bool enqueueLatestPacket{false};
+                if (stream.second->subscribe(contextAddress,
+                                             enqueueLatestPacket))
+                {
+                    // Subscribed - add to active subscriptions
+                    addToActiveSubscriptionsMap(contextAddress,
+                                                streamIdentifier);
+
+#ifndef NDEBUG
+                    SPDLOG_LOGGER_DEBUG(mLogger,
+                                        "{} subscribed to {}",
+                                        std::to_string (contextAddress),
+                                        streamIdentifier);
+#endif
+                }
+                else
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                       "{} did not subscribe to {}",
+                                       std::to_string (contextAddress),
+                                       streamIdentifier);
+                } 
+            }
+            catch (const std::exception &e)
+            {
+                SPDLOG_LOGGER_WARN(mLogger,
+                                   "{} failed to subscribe to {} because {}",
+                                   std::to_string (contextAddress),
+                                   streamIdentifier,
+                                   std::string {e.what()});
+            }
+        }
+        // And be ready for all future streams that come online
+        mPendingSubscribeToAllRequests.insert(contextAddress);
+    }
+
+    [[nodiscard]] std::vector<UDataPacketServiceAPI::V1::Packet>
+        getPackets(uintptr_t contextAddress) const
+    {
+        std::vector<UDataPacketServiceAPI::V1::Packet> result;
+        // Look through my active subscriptions
+        for (const auto &activeSubscription : mActiveSubscriptionsMap)
+        {
+            for (const auto &streamIdentifier : activeSubscription.second)
+            {
+                const auto streamIndex = mStreamsMap.find(streamIdentifier);
+                if (streamIndex != mStreamsMap.end())
+                {
+                    try
+                    {
+                        auto packet
+                            = streamIndex->second->getNextPacket(contextAddress);
+                        if (packet)
+                        {
+                            result.push_back(std::move(*packet));
+                        }
+                    }
+                    catch (const std::exception &e)
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                        "Failed to get packet from stream {} for {} because {}",
+                          streamIndex->first,
+                          std::to_string(contextAddress),
+                          std::string {e.what()});
+                    }
+                }
+                else
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                          "Failed to find stream {} for active subscriber {}",
+                          streamIndex->first, std::to_string(contextAddress));
+                }
+            }
+        }
+        return result;
+    }
+
+    /// Context is leaving
     void unsubscribeFromAll(uintptr_t contextAddress)
     {
         bool wasUnsubscribed{false};
@@ -134,6 +334,7 @@ public:
         erased = mPendingSubscribeToAllRequests.unsafe_erase(contextAddress);
         if (erased == 1){wasUnsubscribed = true;}
         // Pop from the active subscriptions 
+        bool purgedFromActiveSubscriptions{false};
         for (auto &stream : mStreamsMap)
         {
             try
@@ -148,6 +349,11 @@ public:
                 else
                 {
                     wasUnsubscribed = true;
+                    if (!purgedFromActiveSubscriptions)
+                    {
+                        mActiveSubscriptionsMap.unsafe_erase(contextAddress);
+                        purgedFromActiveSubscriptions = true; 
+                    }
                 }
             }
             catch (const std::exception &e)
@@ -159,6 +365,7 @@ public:
                                   std::string {e.what()});
             }
         }
+        // Update number of subscribers 
         {
         std::lock_guard<std::mutex> lock(mMutex);
         mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
@@ -205,14 +412,33 @@ public:
         }
     }
 
+    void addToActiveSubscriptionsMap(uintptr_t contextAddress,
+                                     const std::string &streamIdentifier)
+    {
+        if (mActiveSubscriptionsMap.contains(contextAddress))
+        {
+            mActiveSubscriptionsMap[contextAddress].insert(streamIdentifier);
+        }
+        else
+        {
+            std::set<std::string> newSet{streamIdentifier};
+            mActiveSubscriptionsMap[contextAddress] = std::move(newSet);
+        }
+    }
 //private:
+    SubscriptionManagerOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     mutable std::mutex mMutex;
     oneapi::tbb::concurrent_map
     <
-        std::string,
-        std::unique_ptr<Stream>
+        std::string,            // Stream identifier
+        std::unique_ptr<Stream> // Stream
     > mStreamsMap;
+    oneapi::tbb::concurrent_map
+    <
+        uintptr_t,            // Context identifier
+        std::set<std::string> // Stream identifiers
+    > mActiveSubscriptionsMap;
     oneapi::tbb::concurrent_map
     <
         uintptr_t, //T *, //grpc::CallbackServerContext *,
@@ -226,8 +452,10 @@ public:
     mutable int mNumberOfSubscribers{-1};
 };
 
-SubscriptionManager::SubscriptionManager() :
-    pImpl(std::make_unique<SubscriptionManagerImpl> ())
+SubscriptionManager::SubscriptionManager(
+    const SubscriptionManagerOptions &options,
+    std::shared_ptr<spdlog::logger> logger) :
+    pImpl(std::make_unique<SubscriptionManagerImpl> (options, logger))
 {
 }
 
@@ -267,7 +495,7 @@ void SubscriptionManager::enqueuePacket(
     pImpl->enqueuePacket(std::move(packet));
 }
 
-
+/*
 /// Subscribe to all
 template<typename U>
 void SubscriptionManager::subscribeToAll(U *serverContext)
@@ -279,12 +507,25 @@ void SubscriptionManager::subscribeToAll(U *serverContext)
     auto contextAddress
         = reinterpret_cast<uintptr_t> (serverContext);
     subscribeToAll(contextAddress);
-    //pImpl->subscribeToAll(context);
 }
+*/
+
+void SubscriptionManager::subscribe(
+    uintptr_t contextAddress,
+    const std::set<UDataPacketServiceAPI::V1::StreamIdentifier>
+        &streamIdentifiers)
+{
+    if (streamIdentifiers.empty())
+    {
+        throw std::invalid_argument("No streams selected");
+    }
+    pImpl->subscribe(contextAddress, streamIdentifiers);
+}
+
 
 void SubscriptionManager::subscribeToAll(uintptr_t contextAddress)
 {
-    //pImpl->subscribeToAll(contextAddress);
+    pImpl->subscribeToAll(contextAddress);
 }
 
 
@@ -303,6 +544,13 @@ void SubscriptionManager::unsubscribeFromAll(U *serverContext)
 void SubscriptionManager::unsubscribeFromAll(uintptr_t contextAddress)
 {
     return pImpl->unsubscribeFromAll(contextAddress);
+}
+
+/// Gets the next packets
+std::vector<UDataPacketServiceAPI::V1::Packet>
+SubscriptionManager::getPackets(uintptr_t contextAddress) const
+{
+    return pImpl->getPackets(contextAddress);
 }
 
 /// Destructor

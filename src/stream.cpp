@@ -297,5 +297,10 @@ bool Stream::isSubscribed(const uintptr_t contextAddress) const noexcept
     return pImpl->isSubscribed(contextAddress);
 }
 
+std::string Stream::getIdentifier() const noexcept
+{
+    return pImpl->mStreamIdentifier;
+}
+
 /// Destructor
 Stream::~Stream() = default;

@@ -10,6 +10,8 @@ module;
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include "uDataPacketService/subscriberOptions.hpp"
+#include "uDataPacketService/subscriptionManagerOptions.hpp"
+#include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketService/grpcOptions.hpp"
 
 export module ProgramOptions;
@@ -38,6 +40,7 @@ export struct ProgramOptions
 {
     std::string applicationName{APPLICATION_NAME};
     SubscriberOptions subscriberOptions;
+    SubscriptionManagerOptions subscriptionManagerOptions;
     OTelHTTPMetricsOptions otelHTTPMetricsOptions;
     OTelHTTPLogOptions otelHTTPLogOptions;
     std::chrono::seconds printSummaryInterval{3600};

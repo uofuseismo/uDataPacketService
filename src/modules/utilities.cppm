@@ -12,12 +12,13 @@ export module Utilities;
 namespace UDataPacketService::Utilities
 {
 
+export
 [[nodiscard]] std::string toName(
     const UDataPacketServiceAPI::V1::StreamIdentifier &streamIdentifier)
 {
     auto result = streamIdentifier.network() + "." 
                 + streamIdentifier.station() + "." 
-                + streamIdentifier.channel() + ".";
+                + streamIdentifier.channel();
     if (!streamIdentifier.location_code().empty())
     {   
          result = result + "." + streamIdentifier.location_code();

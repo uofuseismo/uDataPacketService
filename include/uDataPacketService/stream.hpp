@@ -74,6 +74,9 @@ public:
     /// @result True indicates the context was subscribed and is not
     ///         unsubscribed.
     [[nodiscard]] bool unsubscribe(uintptr_t contextAddress);
+
+    /// @result The stream identifier.
+    [[nodiscard]] std::string getIdentifier() const noexcept;
     /// @}
 
     /// @name Management

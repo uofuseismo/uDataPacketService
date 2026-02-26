@@ -51,6 +51,7 @@ set(LIBRARY_SRC
     src/stream.cpp
     src/streamOptions.cpp
     src/subscriptionManager.cpp
+    src/subscriptionManagerOptions.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
     )
@@ -58,6 +59,7 @@ set(HEADER_FILES
     include/uDataPacketService/stream.hpp
     include/uDataPacketService/streamOptions.hpp
     include/uDataPacketService/subscriptionManager.hpp
+    include/uDataPacketService/subscriptionManagerOptions.hpp
     include/uDataPacketService/subscriber.hpp
     include/uDataPacketService/subscriberOptions.hpp)
 set(MODULE_FILES

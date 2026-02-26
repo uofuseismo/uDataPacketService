@@ -21,6 +21,7 @@ import PacketConverter;
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
 #include "uDataPacketService/subscriber.hpp"
+#include "uDataPacketService/subscriptionManager.hpp"
 
 namespace
 {   
@@ -40,6 +41,9 @@ public:
         mSubscriber
             = std::make_unique<UDataPacketService::Subscriber>
               (mOptions.subscriberOptions, mAddPacketCallbackFunction, mLogger);
+        mSubscriptionManager
+            = std::make_unique<UDataPacketService::SubscriptionManager>
+              (mOptions.subscriptionManagerOptions, mLogger);
         mMaximumImportQueueSize = mOptions.maximumImportQueueSize;
         mImportQueue.set_capacity(mMaximumImportQueueSize);
     }
@@ -105,13 +109,25 @@ public:
     /// Sends the import packets to the client(s)
     void propagateImportPackets()
     {
+#ifndef NDEBUG
+        assert(mLogger != nullptr);
+        assert(mSubscriptionManager != nullptr);
+#endif
         const std::chrono::microseconds timeOut{10};
         while (mKeepRunning.load())
         {
             UDataPacketServiceAPI::V1::Packet packet;
             if (mImportQueue.try_pop(packet))
             {
-
+                try
+                {
+                }
+                catch (const std::exception &e)
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                "Failed to enqueue packet into subscription manager because {}",
+                                       std::string {e.what()});
+                }
             }
             else
             {
@@ -223,6 +239,8 @@ public:
     UDataPacketService::ProgramOptions mOptions; 
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::unique_ptr<UDataPacketService::Subscriber> mSubscriber{nullptr};
+    std::shared_ptr<UDataPacketService::SubscriptionManager>
+        mSubscriptionManager{nullptr};
     std::vector<std::future<void>> mFutures;
     oneapi::tbb::concurrent_bounded_queue<UDataPacketServiceAPI::V1::Packet>
         mImportQueue;
