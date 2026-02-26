@@ -17,8 +17,7 @@ import Utilities;
 
 using namespace UDataPacketService;
 
-template<typename T>
-class SubscriptionManager<T>::SubscriptionManagerImpl
+class SubscriptionManager::SubscriptionManagerImpl
 {
 public:
     // Add packet (and, if it is a new stream, update subscribers)
@@ -106,7 +105,7 @@ public:
                 {
                     SPDLOG_LOGGER_DEBUG(mLogger,
                                         "All pending subscriptions filled for {}",
-                                        it->first->peer());
+                                        std::to_string {it->first});
                     {
                     std::lock_guard<std::mutex> lock(mMutex);
                     mPendingSubscriptionRequests.unsafe_erase(it++);
@@ -124,21 +123,15 @@ public:
                                    + " into streams map");
         }
     }
-    /// Client unsubscribes from all streams
-    void unsubscribeFromAll(T *context)
+
+    void unsubscribeFromAll(uintptr_t contextAddress)
     {
         bool wasUnsubscribed{false};
-        if (context == nullptr)
-        {
-            throw std::invalid_argument("Context is null");
-        }
-        auto contextAddress = reinterpret_cast<uintptr_t> (context);
-        auto peer = context->peer();
         // Pop from the pending fine-grained requests
-        size_t erased = mPendingSubscriptionRequests.unsafe_erase(context);
+        size_t erased = mPendingSubscriptionRequests.unsafe_erase(contextAddress);
         if (erased == 1){wasUnsubscribed = true;}
         // Pop from the pending subscribe to all requests
-        erased = mPendingSubscribeToAllRequests.unsafe_erase(context);
+        erased = mPendingSubscribeToAllRequests.unsafe_erase(contextAddress);
         if (erased == 1){wasUnsubscribed = true;}
         // Pop from the active subscriptions 
         for (auto &stream : mStreamsMap)
@@ -149,7 +142,7 @@ public:
                 {
                     SPDLOG_LOGGER_WARN(mLogger,
                                        "Did not unsubscribe {} from {}",
-                                       peer,
+                                       std::to_string(contextAddress),
                                        stream.first);
                 }
                 else
@@ -161,7 +154,7 @@ public:
             {
                 SPDLOG_LOGGER_WARN(mLogger,
                                   "Failed to unsubscribe {} from {} because {}",
-                                  peer,
+                                  std::to_string(contextAddress),
                                   stream.first,
                                   std::string {e.what()});
             }
@@ -174,13 +167,13 @@ public:
         {
             SPDLOG_LOGGER_DEBUG(mLogger,
                                 "{} was unsubscribed from all", 
-                                peer);
+                                std::to_string(contextAddress));
         }
         else
         {
             SPDLOG_LOGGER_WARN(mLogger,
                                "{} may not have been subscribed to anything",
-                               peer);
+                               std::to_string(contextAddress));
         }
     }
 
@@ -222,34 +215,31 @@ public:
     > mStreamsMap;
     oneapi::tbb::concurrent_map
     <
-        T *, //grpc::CallbackServerContext *,
+        uintptr_t, //T *, //grpc::CallbackServerContext *,
         std::set<std::string>
     > mPendingSubscriptionRequests;
     oneapi::tbb::concurrent_set
     <
-        T * //grpc::CallbackServerContext *
+        uintptr_t //T * //grpc::CallbackServerContext *
     > mPendingSubscribeToAllRequests;
     StreamOptions mStreamOptions;
     mutable int mNumberOfSubscribers{-1};
 };
 
-template<typename T>
-SubscriptionManager<T>::SubscriptionManager() :
+SubscriptionManager::SubscriptionManager() :
     pImpl(std::make_unique<SubscriptionManagerImpl> ())
 {
 }
 
 /// Add a packet
-template<typename T>
-void SubscriptionManager<T>::enqueuePacket(
+void SubscriptionManager::enqueuePacket(
     const UDataPacketServiceAPI::V1::Packet &packet)
 {
     auto copy = packet;
     enqueuePacket(std::move(copy));
 }
 
-template<typename T>
-void SubscriptionManager<T>::enqueuePacket(
+void SubscriptionManager::enqueuePacket(
     UDataPacketServiceAPI::V1::Packet &&packet)
 {
     // Won't get far without this
@@ -279,35 +269,49 @@ void SubscriptionManager<T>::enqueuePacket(
 
 
 /// Subscribe to all
-template<typename T>
-void SubscriptionManager<T>::subscribeToAll(T *serverContext)
+template<typename U>
+void SubscriptionManager::subscribeToAll(U *serverContext)
 {
     if (serverContext == nullptr)
     {
         throw std::invalid_argument("Server context is null");
     }
+    auto contextAddress
+        = reinterpret_cast<uintptr_t> (serverContext);
+    subscribeToAll(contextAddress);
     //pImpl->subscribeToAll(context);
 }
 
+void SubscriptionManager::subscribeToAll(uintptr_t contextAddress)
+{
+    //pImpl->subscribeToAll(contextAddress);
+}
 
-template<typename T>
-void SubscriptionManager<T>::unsubscribeFromAll(T *serverContext)
+
+template<typename U>
+void SubscriptionManager::unsubscribeFromAll(U *serverContext)
 {
     if (serverContext == nullptr)
     {
         throw std::invalid_argument("Server context is null");
     }
-    return pImpl->unsubscribeFromAll(serverContext);
+    auto contextAddress
+        = reinterpret_cast<uintptr_t> (serverContext);
+    return unsubscribeFromAll(contextAddress);
+}
+
+void SubscriptionManager::unsubscribeFromAll(uintptr_t contextAddress)
+{
+    return pImpl->unsubscribeFromAll(contextAddress);
 }
 
 /// Destructor
-template<typename T>
-SubscriptionManager<T>::~SubscriptionManager() = default;
+SubscriptionManager::~SubscriptionManager() = default;
 
 ///--------------------------------------------------------------------------///
 ///                            Template Instantiation                        ///
 ///--------------------------------------------------------------------------///
-template class
-UDataPacketService::SubscriptionManager<grpc::CallbackServerContext>;
+//template class
+//UDataPacketService::SubscriptionManager<grpc::CallbackServerContext>;
 
 

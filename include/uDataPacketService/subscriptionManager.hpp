@@ -14,7 +14,6 @@ namespace UDataPacketService
 ///        of streams, etc.
 /// @copyright Ben Baker (University of Utah) distributed under the
 ///            MIT NO AI license.
-template<typename T>
 class SubscriptionManager
 {
 public:
@@ -42,11 +41,14 @@ SubscriptionManager();
     /// @{
 
     /// @brief Subscribes to all streams.
-    /// @param[in] serverContext  The
-    void subscribeToAll(T *serverContext);
+    /// @param[in] serverContext  The server context.
+    template<typename U> void subscribeToAll(U *serverContext);
+    void subscribeToAll(uintptr_t contextAddress);
+
     /// @brief Unsubscribes the server context from all subscriptions.
     /// @param[in] serverContext  The server context.
-    void unsubscribeFromAll(T *serverContext);
+    template<typename U> void unsubscribeFromAll(U *serverContext);
+    void unsubscribeFromAll(uintptr_t contextAddress);
     /// @}
  
     /// @brief Destructor.

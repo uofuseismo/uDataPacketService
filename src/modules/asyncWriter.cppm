@@ -1,5 +1,6 @@
 module;
 #include <string>
+#include <queue>
 #include <atomic>
 #ifndef NDEBUG
 #include <cassert>
@@ -50,9 +51,8 @@ public:
         const UDataPacketServiceAPI::V1::SubscriptionRequest *request,
         std::shared_ptr
         <
-           UDataPacketService::SubscriptionManager<grpc::CallbackServerContext>
-        >
-           subscriptionManager,
+           UDataPacketService::SubscriptionManager
+        > subscriptionManager,
         std::shared_ptr<spdlog::logger> logger,
         std::atomic<bool> *keepRunning
     ) :
@@ -70,6 +70,41 @@ public:
             }
         }
     }
+
+    // This needs to perform quickly.  I should do blocking work but
+    // this is my last ditch effort to evict the context from the 
+    // subscription manager..
+    void OnDone() override
+    {
+        if (mContext)
+        {   
+            if (!mSubscribed)
+            {   
+                mSubscriptionManager->unsubscribeFromAll(mContext);
+                mSubscribed = false;
+            }   
+        }   
+/*
+        auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+        SPDLOG_LOGGER_INFO(mLogger,
+            "Subscribe to all RPC completed for {}.  Subscription manager is now managing {} subscribers.",
+            mPeer,
+            std::to_string (nSubscribers));
+*/
+        delete this;
+    }
+
+    void OnCancel() override
+    {
+        SPDLOG_LOGGER_INFO(mLogger,
+                           "Subscribe to all RPC cancelled for {}", mPeer);
+        if (mSubscribed)
+        {
+            mSubscriptionManager->unsubscribeFromAll(mContext);
+            mSubscribed = false;
+        }
+    }
+
 #ifndef NDEBUG
     ~Subscribe()
     {
@@ -84,13 +119,57 @@ public:
         {
             // Cancel means we leave now
             if (mContext->IsCancelled()){break;}
+
+            // Get any remaining packets on the queue on the wire
+            if (!mPacketsQueue.empty() && !mWriteInProgress)
+            {
+                const auto &packet = mPacketsQueue.front();
+                mWriteInProgress = true;
+                StartWrite(&packet);
+                return;
+            }
+
+            // Try to get more packets to write while I `wait.'
+            if (mPacketsQueue.empty())
+            {
+/*
+                try
+                {
+                    auto packetsBuffer
+                        = mManager->getNextPacketsFromAllSubscriptions(
+                              mContext);
+                    for (auto &packet : packetsBuffer)
+                    {
+                        if (mPacketsQueue.size() > mMaximumQueueSize)
+                        {
+                            spdlog::warn(
+                               "RPC writer queue exceeded - popping element");
+                            mPacketsQueue.pop();
+                         }
+                         mPacketsQueue.push(std::move(packet));
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    spdlog::warn("Failed to get next packet because "
+                               + std::string {e.what()});
+                }
+*/
+            }
+
+            // No new packets were acquired and I'm not waiting for a write.
+            // Give me stream manager a break.
+            if (mPacketsQueue.empty() && !mWriteInProgress)
+            {
+                std::this_thread::sleep_for(mTimeOut);
+            }
         }
         if (mContext)
         {
             // The context is still valid so try to remove it from the
             // subscriptions.  This can be the case whether the server is
             // shutting down or the client bailed.
-//            mSubscriptionManager->unsubscribe(mContext);
+//            mSubscriptionManager->unsubscribeFromAll(mContext);
             mSubscribed = false;
             if (mContext->IsCancelled())
             {
@@ -116,12 +195,15 @@ public:
     grpc::CallbackServerContext *mContext{nullptr};
     std::shared_ptr
     <
-        UDataPacketService::SubscriptionManager<grpc::CallbackServerContext>
+        UDataPacketService::SubscriptionManager
     > mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     std::string mPeer;
     bool mSubscribed{false};
+    std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;
+    std::chrono::milliseconds mTimeOut{20};
+    bool mWriteInProgress{false};
 };
 
 ///--------------------------------------------------------------------------///
