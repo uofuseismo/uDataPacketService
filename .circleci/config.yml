@@ -3,7 +3,7 @@ jobs:
   compile-job:
     docker:
       - image: quay.io/uuss/us8base
-    resource_class: medium
+    resource_class: medium.gen2
     steps:
       - checkout
       - run:
