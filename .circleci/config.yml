@@ -4,7 +4,6 @@ jobs:
     docker:
       - image: quay.io/uuss/us8base
     resource_class: medium
-    #resource_class: small
     steps:
       - checkout
       - run:
