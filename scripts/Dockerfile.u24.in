@@ -1,7 +1,7 @@
 # Purpose: Creates the container for running the uDataPacketService software
 #          in an Ubuntu container.
-# Usage: podman build -t udatapacketservice:latest -f Dockerfile.deb
-#        buildah bud -t udatapacketservice:latest -f Dockerfile.deb
+# Usage: podman build -t udatapacketservice:latest -f Dockerfile.u24
+#        buildah bud -t udatapacketservice:latest -f Dockerfile.u24
 FROM ubuntu:24.04
 COPY @PROJECT_NAME@-@PROJECT_VERSION@-Linux.tar.gz .
 LABEL version="@PROJECT_VERSION@"

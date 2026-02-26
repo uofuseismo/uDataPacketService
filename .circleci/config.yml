@@ -27,14 +27,14 @@ jobs:
             cpack -B /tmp/artifacts TGZ 
             rm -rf /tmp/artifacts/_CPack_Packages
             cp /tmp/artifacts/*-Linux.tar.gz /tmp/workspace/
-            cp Dockerfile.deb /tmp/workspace/
+            cp Dockerfile.u24 /tmp/workspace/
             ls /tmp/workspace/
       - store_artifacts:
           path: /tmp/artifacts
       - persist_to_workspace:
           root: /tmp/workspace
           paths:
-            - Dockerfile.deb
+            - Dockerfile.u24
             - uDataPacketService-*
   # End compile job
   deploy-job:
@@ -59,7 +59,7 @@ jobs:
             tarFile=$(ls *Linux.tar.gz)
             version=$(echo ${tarFile} | sed 's/uDataPacketService-//g' | sed 's/-Linux.tar.gz//g')
             #echo ${version}
-            docker build -t udatapacketservice:${version} -t udatapacketservice:latest -f ./Dockerfile.deb .
+            docker build -t udatapacketservice:${version} -t udatapacketservice:latest -f ./Dockerfile.u24 .
             docker tag udatapacketservice:${version} quay.io/uuss/udatapacketservice:${version}
             docker push quay.io/uuss/udatapacketservice:${version}
     # end steps
