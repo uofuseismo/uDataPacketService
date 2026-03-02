@@ -2,7 +2,12 @@
 #define TESTING_UTILITIES_HPP
 #include <bit>
 #include <vector>
+#include <chrono>
+#include <random>
 #include <algorithm>
+#include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
+
 namespace
 {
 template<typename T>
@@ -55,6 +60,89 @@ std::string pack(const std::vector<T> &data)
     };
     return pack(data, swapBytes);
 }
+
+[[maybe_unused]] [[nodiscard]]
+std::chrono::microseconds getNowSimple() 
+{
+     auto now 
+        = std::chrono::duration_cast<std::chrono::seconds>
+          ((std::chrono::high_resolution_clock::now()).time_since_epoch());
+     return now;
+}
+
+namespace UV1 = UDataPacketServiceAPI::V1;
+UDataPacketServiceAPI::V1::StreamIdentifier
+     toIdentifier(const std::string &network,
+                  const std::string &station,
+                  const std::string &channel,
+                  const std::string &locationCode)
+{
+    namespace UV1 = UDataPacketServiceAPI::V1;
+    UV1::StreamIdentifier identifier;
+    identifier.set_network(network);
+    identifier.set_station(station);
+    identifier.set_channel(channel);
+    identifier.set_location_code(locationCode);
+    return identifier;
+}
+
+[[maybe_unused]] [[nodiscard]]
+std::vector<UDataPacketServiceAPI::V1::Packet>
+    generatePackets(int nPackets = 5,
+                    const std::string &network = "UU",
+                    const std::string &station = "CWU",
+                    const std::string &channel = "HHZ",
+                    const std::string &locationCode = "01")
+{
+    namespace UV1 = UDataPacketServiceAPI::V1;
+    std::vector<UDataPacketServiceAPI::V1::Packet> result;
+    constexpr double samplingRate{100};
+    auto identifier = ::toIdentifier(network, station, channel, locationCode);
+
+    UV1::Packet packet;
+    *packet.mutable_stream_identifier() = identifier;
+    packet.set_sampling_rate(samplingRate);
+
+    auto startTimeMuS
+        = ::getNowSimple()
+        - std::chrono::seconds {nPackets*(300/100) + 1};
+    std::mt19937 generator(23883823);
+    std::uniform_int_distribution<int> distribution(200, 300);
+    int sample{0};
+    for (int i = 0; i < nPackets; ++i)
+    {
+        auto nSamples = distribution(generator);
+        std::vector<int> data(nSamples);
+        for (int k = 0; k < nSamples; ++k)
+        {
+            data[k] = sample;
+            sample++;
+        }
+        auto packedData = ::pack(data);
+
+        startTimeMuS
+            = startTimeMuS
+            + std::chrono::microseconds
+              {
+              static_cast<int64_t> (std::round(1000000*nSamples/samplingRate))
+              };
+        auto startTime
+             = google::protobuf::util::TimeUtil::MicrosecondsToTimestamp(
+                 startTimeMuS.count());
+
+        UV1::Packet packet;
+        *packet.mutable_stream_identifier() = identifier;
+        *packet.mutable_start_time() = startTime;
+        packet.set_sampling_rate(samplingRate);
+        packet.set_number_of_samples(data.size());
+        packet.set_data_type(UV1::DataType::DATA_TYPE_INTEGER_32);
+        packet.set_data(packedData);
+
+        result.push_back(std::move(packet));
+    }
+    return result;
+}
+
 
 }
 #endif

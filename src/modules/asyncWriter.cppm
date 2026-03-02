@@ -169,8 +169,11 @@ public:
             // The context is still valid so try to remove it from the
             // subscriptions.  This can be the case whether the server is
             // shutting down or the client bailed.
-//            mSubscriptionManager->unsubscribeFromAll(mContext);
-            mSubscribed = false;
+            if (mSubscribed)
+            {
+                mSubscriptionManager->unsubscribeFromAll(mContext);
+                mSubscribed = false;
+            }
             if (mContext->IsCancelled())
             {
                 SPDLOG_LOGGER_INFO(mLogger,

@@ -43,7 +43,7 @@ export struct ProgramOptions
     SubscriptionManagerOptions subscriptionManagerOptions;
     OTelHTTPMetricsOptions otelHTTPMetricsOptions;
     OTelHTTPLogOptions otelHTTPLogOptions;
-    std::chrono::seconds printSummaryInterval{3600};
+    std::chrono::seconds printSummaryInterval{std::chrono::minutes {15}};
     int verbosity{3};
     int maximumImportQueueSize{8192};
     bool exportLogs{false};

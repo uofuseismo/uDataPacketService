@@ -64,3 +64,16 @@ export
 }
 
 
+namespace UDataPacketServiceAPI::V1
+{
+
+[[nodiscard]] 
+bool operator<(const StreamIdentifier &lhs, const StreamIdentifier &rhs)
+{
+    return UDataPacketService::Utilities::toName(lhs) <
+           UDataPacketService::Utilities::toName(rhs);
+}
+
+
+}
+

@@ -66,6 +66,7 @@ set(MODULE_FILES
     src/modules/programOptions.cppm
     src/modules/packetConverter.cppm
     src/modules/logger.cppm
+    src/modules/metrics.cppm
     src/modules/otelSpdlogSink.cppm
     src/modules/utilities.cppm
     src/modules/asyncWriter.cppm
@@ -152,7 +153,8 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                   testing/grpc.cpp
                   testing/packetConverter.cpp
                   testing/sanitizer.cpp
-                  testing/stream.cpp)
+                  testing/stream.cpp
+                  testing/subscriptionManager.cpp)
    set_target_properties(unitTests PROPERTIES
                          CXX_STANDARD 20
                          CXX_STANDARD_REQUIRED YES 
@@ -166,6 +168,7 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                             gRPC::grpc++
                             opentelemetry-cpp::otlp_http_metric_exporter
                             Threads::Threads
+                            spdlog::spdlog_header_only
                             Catch2::Catch2 Catch2::Catch2WithMain)
    target_include_directories(unitTests
                               PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>

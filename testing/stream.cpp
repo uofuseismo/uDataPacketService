@@ -20,6 +20,7 @@
 namespace
 {
 
+/*
 [[nodiscard]] std::chrono::microseconds getNowSimple() 
 {
      auto now 
@@ -87,6 +88,7 @@ std::vector<UDataPacketServiceAPI::V1::Packet>
     }
     return result;
 }
+*/
 
 }
 

@@ -52,7 +52,7 @@ public:
     /// @param[in] streamIdentifiers  The stream identifiers to which to subscribe.
     /// @throws std::invalid_argumetn if streamIdentifiers is empty.
     void subscribe(uintptr_t contextAddress,
-                   const std::set<UDataPacketServiceAPI::V1::StreamIdentifier> &streamIdentifiers);
+                   const std::vector<UDataPacketServiceAPI::V1::StreamIdentifier> &streamIdentifiers);
 
     /// @brief Subscribes to all streams.
     /// @param[in] serverContext  The server context.
@@ -72,6 +72,13 @@ public:
     /// @param[in] serverContext  The server context.
     template<typename U> void unsubscribeFromAll(U *serverContext);
     void unsubscribeFromAll(uintptr_t contextAddress);
+    /// @}
+
+    /// @name Application Management
+    /// @{
+
+    /// @result The total number of subscribers.
+    [[nodiscard]] int getNumberOfSubscribers() const noexcept;
     /// @}
  
     /// @brief Destructor.

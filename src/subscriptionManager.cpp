@@ -1,6 +1,7 @@
 #include <mutex>
 #include <string>
 #include <set>
+#include <algorithm>
 #ifndef NDEBUG
 #include <cassert>
 #endif
@@ -150,7 +151,7 @@ public:
     /// Context is subscribing to set of streams
     void subscribe(
         uintptr_t contextAddress, 
-        const std::set<UDataPacketServiceAPI::V1::StreamIdentifier>
+        const std::vector<UDataPacketServiceAPI::V1::StreamIdentifier>
             &streamIdentifiers)
     {
         if (streamIdentifiers.empty()){return;}
@@ -224,6 +225,11 @@ public:
 
             }
         } // Loop on desired streams
+        // Update number of subscribers 
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
+        }
     }
 
     /// Context is subscribe to all streams
@@ -280,6 +286,11 @@ public:
         }
         // And be ready for all future streams that come online
         mPendingSubscribeToAllRequests.insert(contextAddress);
+        // Signal update number of subscribers 
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
+        }
     }
 
     [[nodiscard]] std::vector<UDataPacketServiceAPI::V1::Packet>
@@ -365,7 +376,7 @@ public:
                                   std::string {e.what()});
             }
         }
-        // Update number of subscribers 
+        // Signal update number of subscribers 
         {
         std::lock_guard<std::mutex> lock(mMutex);
         mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
@@ -389,6 +400,27 @@ public:
     {
         {
         std::lock_guard<std::mutex> lock(mMutex);
+        // Early return?
+        if (mNumberOfSubscribers >= 0){return mNumberOfSubscribers;}
+        std::set<uintptr_t> allSubscribers;
+        // Count them
+        for (const auto &subscriber : mActiveSubscriptionsMap)
+        {
+            allSubscribers.insert(subscriber.first);
+        }
+        for (const auto &subscriber : mPendingSubscriptionRequests)
+        {
+            allSubscribers.insert(subscriber.first);
+        }
+        for (const auto &subscriber : mPendingSubscribeToAllRequests)
+        {
+            allSubscribers.insert(subscriber);
+        }
+        // Update and finish
+        mNumberOfSubscribers = static_cast<int> (allSubscribers.size());
+        return mNumberOfSubscribers;
+        }
+        /* 
         if (mNumberOfSubscribers < 0)
         {
             std::set<uintptr_t> allSubscribers;
@@ -408,8 +440,8 @@ public:
                 mNumberOfSubscribers = static_cast<int> (allSubscribers.size());
             }
         }
+        */
         return mNumberOfSubscribers;
-        }
     }
 
     void addToActiveSubscriptionsMap(uintptr_t contextAddress,
@@ -512,12 +544,33 @@ void SubscriptionManager::subscribeToAll(U *serverContext)
 
 void SubscriptionManager::subscribe(
     uintptr_t contextAddress,
-    const std::set<UDataPacketServiceAPI::V1::StreamIdentifier>
-        &streamIdentifiers)
+    const std::vector<UDataPacketServiceAPI::V1::StreamIdentifier>
+        &streamIdentifiersIn)
 {
-    if (streamIdentifiers.empty())
+    if (streamIdentifiersIn.empty())
     {
         throw std::invalid_argument("No streams selected");
+    }
+    // Create a set of identifiers
+    std::vector<UDataPacketServiceAPI::V1::StreamIdentifier> streamIdentifiers;
+    for (const auto &identifier : streamIdentifiersIn)
+    {
+        bool exists{false};
+        auto thisName = Utilities::toName(identifier);
+        for (const auto &existingIdentifier : streamIdentifiers)
+        {
+            auto existingName = Utilities::toName(existingIdentifier);
+            if (thisName == existingName)
+            {
+                exists = true;
+                break;
+            } 
+        }
+        if (!exists){streamIdentifiers.push_back(identifier);}
+    }
+    if (streamIdentifiers.empty())
+    {
+        throw std::runtime_error("Failed to create stream identifier list");
     }
     pImpl->subscribe(contextAddress, streamIdentifiers);
 }
@@ -555,6 +608,12 @@ SubscriptionManager::getPackets(uintptr_t contextAddress) const
 
 /// Destructor
 SubscriptionManager::~SubscriptionManager() = default;
+
+/// Number of subscribers
+int SubscriptionManager::getNumberOfSubscribers() const noexcept
+{
+    return pImpl->getNumberOfSubscribers();
+}
 
 ///--------------------------------------------------------------------------///
 ///                            Template Instantiation                        ///

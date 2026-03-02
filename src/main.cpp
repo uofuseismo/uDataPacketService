@@ -1,5 +1,6 @@
 import ProgramOptions;
 import Logger;
+import Metrics;
 import Utilities;
 import PacketConverter;
 
@@ -27,6 +28,9 @@ namespace
 {   
 std::atomic<bool> mInterrupted{false};
 
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    totalPacketsReceivedCounter;
+
 class Process
 {
 public:
@@ -46,6 +50,29 @@ public:
               (mOptions.subscriptionManagerOptions, mLogger);
         mMaximumImportQueueSize = mOptions.maximumImportQueueSize;
         mImportQueue.set_capacity(mMaximumImportQueueSize);
+
+        if (mOptions.exportMetrics)
+        {
+            // Need a provider from which to get a meter.  This is initialized
+            // once and should last the duration of the application.
+            auto provider 
+                = opentelemetry::metrics::Provider::GetMeterProvider();
+    
+            // Meter will be bound to application (library, module, class, etc.)
+            // so as to identify who is genreating these metrics.
+            auto meter = provider->GetMeter(mOptions.applicationName, "1.2.0");
+
+            namespace UMetrics = UDataPacketService::Metrics;
+            // Packets received from import
+            totalPacketsReceivedCounter
+                = meter->CreateInt64ObservableCounter(
+                    "seismic_data.import.grpc.client.packets.received",
+                    "Number of packets received from the GRPC import data packet proxy.",
+                    "{packets}");
+            totalPacketsReceivedCounter->AddCallback(
+                UMetrics::observeNumberOfPacketsReceived,
+                nullptr);
+        }
     }
 
     ~Process()
@@ -121,6 +148,7 @@ public:
             {
                 try
                 {
+                    mSubscriptionManager->enqueuePacket(std::move(packet));
                 }
                 catch (const std::exception &e)
                 {
@@ -145,8 +173,27 @@ public:
               ((std::chrono::high_resolution_clock::now()).time_since_epoch());
         if (now > mLastPrintSummary + mOptions.printSummaryInterval)
         {
+            auto &metrics
+                = UDataPacketService::Metrics::MetricsSingleton::getInstance();
             mLastPrintSummary = now;
-
+            auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+            if (mOptions.exportMetrics)
+            {
+                int64_t currentNumberOfPacketsReceived
+                    = metrics.getReceivedPacketsCount();
+                auto reportPacketsReceived = currentNumberOfPacketsReceived
+                                           - mReportNumberOfPacketsReceived;
+                SPDLOG_LOGGER_INFO(mLogger,
+                                   "Received {} packets since last update.  Currently servicing {} subscribers.",
+                                   reportPacketsReceived, nSubscribers);
+                mReportNumberOfPacketsReceived = reportPacketsReceived;
+            }
+            else
+            {
+                SPDLOG_LOGGER_INFO(mLogger,
+                                   "Currently servicing {} subscribers.",
+                                   nSubscribers);
+            }
         }
     }
 
@@ -258,6 +305,7 @@ public:
     {
         UDataPacketService::Utilities::getNow<std::chrono::microseconds> ()
     };
+    int64_t mReportNumberOfPacketsReceived{0};
     int mMaximumImportQueueSize{8192};
     std::atomic<bool> mKeepRunning{true};
     bool mStopRequested{false};
@@ -311,14 +359,14 @@ int main(int argc, char *argv[])
     auto logger
         = UDataPacketService::Logger::initialize(programOptions);
     // Initialize the metrics singleton
-    //USEEDLinkToDataPacketImportProxy::Metrics::initializeMetricsSingleton();
+    UDataPacketService::Metrics::initializeMetricsSingleton();
 
     try 
     {   
         if (programOptions.exportMetrics)
         {
             SPDLOG_LOGGER_INFO(logger, "Initializing metrics");
-            //UDataPacketService::Metrics::initialize(programOptions);
+            UDataPacketService::Metrics::initialize(programOptions);
         }
     }   
     catch (const std::exception &e) 
@@ -339,27 +387,15 @@ int main(int argc, char *argv[])
     {
         ::Process process(programOptions, logger);
         process.start();
-        if (programOptions.exportMetrics)
-        {
-            //UDataPacketService::Metrics::cleanup();
-        }
-        if (programOptions.exportLogs)
-        {
-            UDataPacketService::Logger::cleanup();
-        }
+        UDataPacketService::Metrics::cleanup();
+        UDataPacketService::Logger::cleanup();
     }
     catch (const std::exception &e)
     {
         SPDLOG_LOGGER_CRITICAL(logger, "Main process failed with {}",
                                std::string {e.what()});
-        if (programOptions.exportMetrics)
-        {
-            //UDataPacketService::Metrics::cleanup();
-        }
-        if (programOptions.exportLogs)
-        {
-            UDataPacketService::Logger::cleanup();
-        }
+        UDataPacketService::Metrics::cleanup();
+        UDataPacketService::Logger::cleanup();
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
