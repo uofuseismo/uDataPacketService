@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uDataPacketService VERSION 0.0.1 LANGUAGES CXX)
+project(uDataPacketService VERSION 0.0.2 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
@@ -42,27 +42,34 @@ set(EXPORT_PROTO_SRC
     uDataPacketServiceAPI/v1/broadcast.proto
     )
 set(LIBRARY_SRC
-    src/grpcClientOptions.cpp
-    src/grpcServerOptions.cpp
-    src/subscriberOptions.cpp
-    src/subscriber.cpp
     src/futurePacketDetector.cpp
     src/expiredPacketDetector.cpp
     src/duplicatePacketDetector.cpp
+    src/grpcClientOptions.cpp
+    src/grpcServerOptions.cpp
+    src/serverOptions.cpp
     src/stream.cpp
     src/streamOptions.cpp
+    src/subscriber.cpp
+    src/subscriberOptions.cpp
     src/subscriptionManager.cpp
     src/subscriptionManagerOptions.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
     )
 set(HEADER_FILES
+    include/uDataPacketService/futurePacketDetector.hpp
+    include/uDataPacketService/expiredPacketDetector.hpp
+    include/uDataPacketService/duplicatePacketDetector.hpp
+    include/uDataPacketService/grpcClientOptions.hpp
+    include/uDataPacketService/grpcServerOptions.hpp
+    include/uDataPacketService/serverOptions.hpp
     include/uDataPacketService/stream.hpp
     include/uDataPacketService/streamOptions.hpp
-    include/uDataPacketService/subscriptionManager.hpp
-    include/uDataPacketService/subscriptionManagerOptions.hpp
     include/uDataPacketService/subscriber.hpp
-    include/uDataPacketService/subscriberOptions.hpp)
+    include/uDataPacketService/subscriberOptions.hpp 
+    include/uDataPacketService/subscriptionManager.hpp
+    include/uDataPacketService/subscriptionManagerOptions.hpp)
 set(MODULE_FILES
     src/modules/programOptions.cppm
     src/modules/packetConverter.cppm
@@ -70,7 +77,7 @@ set(MODULE_FILES
     src/modules/metrics.cppm
     src/modules/otelSpdlogSink.cppm
     src/modules/utilities.cppm
-    #src/modules/asyncWriter.cppm
+    src/modules/asyncWriter.cppm
     src/modules/server.cppm
     )
 

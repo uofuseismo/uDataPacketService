@@ -22,6 +22,7 @@ import PacketConverter;
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
+//#include "uDataPacketService/server.hpp"
 #include "uDataPacketService/subscriber.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
 
@@ -46,6 +47,9 @@ public:
         mSubscriber
             = std::make_unique<UDataPacketService::Subscriber>
               (mOptions.subscriberOptions, mAddPacketCallbackFunction, mLogger);
+        mService 
+            = std::make_unique<UDataPacketService::Service>
+              (mOptions.serverOptions, mLogger);
         mSubscriptionManager
             = std::make_unique<UDataPacketService::SubscriptionManager>
               (mOptions.subscriptionManagerOptions, mLogger);
@@ -84,7 +88,12 @@ public:
     void stop()
     {
         mKeepRunning.store(false);
+        // Stop receiving packets
         if (mSubscriber){mSubscriber->stop();}
+        std::this_thread::sleep_for(std::chrono::milliseconds {25});
+        // Stop sending packets
+        if (mService){mService->stop();}
+        // Check my futures
         for (auto &future : mFutures)
         {   
             if (future.valid()){future.get();}
@@ -96,9 +105,11 @@ public:
 #ifndef NDEBUG
         assert(mLogger != nullptr);
         assert(mSubscriber != nullptr);
+        assert(mService != nullptr);
 #endif
         mKeepRunning.store(true);
         mFutures.push_back(std::async(&Process::propagateImportPackets, this));
+        mService->start();
         mFutures.push_back(mSubscriber->start());
         handleMainThread();
     }
@@ -149,7 +160,7 @@ public:
             {
                 try
                 {
-                    mSubscriptionManager->enqueuePacket(std::move(packet));
+                    mService->enqueuePacket(std::move(packet));
                 }
                 catch (const std::exception &e)
                 {
@@ -177,7 +188,7 @@ public:
             auto &metrics
                 = UDataPacketService::Metrics::MetricsSingleton::getInstance();
             mLastPrintSummary = now;
-            auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+            auto nSubscribers = mService->getNumberOfSubscribers();
             if (mOptions.exportMetrics)
             {
                 int64_t currentNumberOfPacketsReceived
@@ -289,6 +300,7 @@ public:
     std::unique_ptr<UDataPacketService::Subscriber> mSubscriber{nullptr};
     std::shared_ptr<UDataPacketService::SubscriptionManager>
         mSubscriptionManager{nullptr};
+    std::unique_ptr<UDataPacketService::Service> mService{nullptr};
     std::vector<std::future<void>> mFutures;
     oneapi::tbb::concurrent_bounded_queue<UDataPacketServiceAPI::V1::Packet>
         mImportQueue;

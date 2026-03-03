@@ -11,7 +11,7 @@ module;
 #include <spdlog/spdlog.h>
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
-#include "uDataPacketService/subscriberOptions.hpp"
+#include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/grpcServerOptions.hpp"
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
@@ -55,8 +55,8 @@ public:
     (
         grpc::CallbackServerContext *context,
         const UDataPacketServiceAPI::V1::SubscriptionRequest *request,
-        const SubscriberOptions &subscriberOptions,
-        const bool isSecure,
+        const ServerOptions &serverOptions,
+        const bool isSecureConnection,
         std::shared_ptr
         <
            UDataPacketService::SubscriptionManager
@@ -66,7 +66,7 @@ public:
     ) :
         mContext(context),
         mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
-        mOptions(subscriberOptions),
+        mOptions(serverOptions),
         mSubscriptionManager(subscriptionManager),
         mLogger(logger),
         mKeepRunning(keepRunning)
@@ -81,11 +81,11 @@ public:
         }
 
         // Authenticate
-        if (isSecure &&
-            mOptions.getGRPCServerOptions().getAccessToken() != std::nullopt)
+        if (isSecureConnection &&
+            mOptions.getGRPCOptions().getAccessToken() != std::nullopt)
         {
             auto accessToken
-                = *mOptions.getGRPCServerOptions().getAccessToken();
+                = *mOptions.getGRPCOptions().getAccessToken();
             if (!validateSubscriber(mContext, accessToken))
             {
                 SPDLOG_LOGGER_INFO(mLogger, "Rejected {}", mPeer);
@@ -105,11 +105,8 @@ Subscriber must provide access token in x-custom-auth-token header field.
             SPDLOG_LOGGER_INFO(mLogger, "{} connected to subscribe RPC", mPeer);
         }
 
-int maximumNumberOfSubscribers{8};
-/*
         auto maximumNumberOfSubscribers
             = mOptions.getMaximumNumberOfSubscribers();
-*/
         if (mSubscriptionManager->getNumberOfSubscribers() >=
             maximumNumberOfSubscribers)
         {
@@ -121,7 +118,7 @@ int maximumNumberOfSubscribers{8};
             Finish(status);
        }
 
-        // Subscribe
+        // Allow client to subscribe
         try
         {
             if (request->selections().empty())
@@ -163,7 +160,7 @@ int maximumNumberOfSubscribers{8};
                  /std::max(1, maximumNumberOfSubscribers);
 //            mMetrics.updateSubscriberUtilization(utilization);
             SPDLOG_LOGGER_INFO(mLogger,
-                          "Now managing {} subscribers (Resource {} pct utilized)",
+                          "Now managing {} subscribers.  Resource {} pct utilized.",
                           nSubscribers, utilization*100.0);
         }
         catch (const std::exception &e)
@@ -191,11 +188,17 @@ int maximumNumberOfSubscribers{8};
                 mSubscribed = false;
             }   
         }   
+        auto maximumNumberOfSubscribers
+            = mOptions.getMaximumNumberOfSubscribers();
         auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+            auto utilization
+                = static_cast<double> (nSubscribers)
+                 /std::max(1, maximumNumberOfSubscribers);
         SPDLOG_LOGGER_INFO(mLogger,
-            "Subscribe RPC completed for {}.  Subscription manager is now managing {} subscribers.",
+            "Subscribe RPC completed for {}.  Subscription manager is now managing {} subscribers.  Resource {} pct utilized.",
             mPeer, 
-            std::to_string(nSubscribers));
+            std::to_string(nSubscribers),
+            utilization*100.0);
         delete this;
     }
 
@@ -244,6 +247,12 @@ int maximumNumberOfSubscribers{8};
                          = mSubscriptionManager->getPackets(mContextAddress);
                     for (auto &packet : packetsBuffer)
                     {
+                        bool allow{true};
+                        if (mCheckPackets)
+                        {
+
+                        }
+                        if (!allow){continue;}
                         if (mPacketsQueue.size() > mMaximumQueueSize)
                         {
                             SPDLOG_LOGGER_WARN(mLogger,
@@ -304,7 +313,7 @@ int maximumNumberOfSubscribers{8};
     }
     grpc::CallbackServerContext *mContext{nullptr};
     uintptr_t mContextAddress;
-    SubscriberOptions mOptions;
+    ServerOptions mOptions;
     std::shared_ptr
     <
         UDataPacketService::SubscriptionManager
@@ -317,6 +326,7 @@ int maximumNumberOfSubscribers{8};
     std::chrono::milliseconds mTimeOut{20};
     bool mSubscribed{false};
     bool mWriteInProgress{false};
+    bool mCheckPackets{false};
 };
 
 ///--------------------------------------------------------------------------///
@@ -331,9 +341,9 @@ public:
     SubscribeToAll
     (       
         grpc::CallbackServerContext *context,
-        const UDataPacketServiceAPI::V1::SubscriptionRequest *request,
-        const SubscriberOptions &subscriberOptions,
-        const bool isSecure,
+        const UDataPacketServiceAPI::V1::SubscribeToAllRequest *request,
+        const ServerOptions &serverOptions,
+        const bool isSecureConnection,
         std::shared_ptr
         <
            UDataPacketService::SubscriptionManager
@@ -343,7 +353,7 @@ public:
     ) :     
         mContext(context),
         mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
-        mOptions(subscriberOptions),
+        mOptions(serverOptions),
         mSubscriptionManager(subscriptionManager),
         mLogger(logger),
         mKeepRunning(keepRunning)
@@ -358,11 +368,11 @@ public:
         }
 
         // Authenticate
-        if (isSecure &&
-            mOptions.getGRPCServerOptions().getAccessToken() != std::nullopt)
+        if (isSecureConnection &&
+            mOptions.getGRPCOptions().getAccessToken() != std::nullopt)
         {
             auto accessToken
-                = *mOptions.getGRPCServerOptions().getAccessToken();
+                = *mOptions.getGRPCOptions().getAccessToken();
             if (!validateSubscriber(mContext, accessToken))
             {
                 SPDLOG_LOGGER_INFO(mLogger, "Rejected {}", mPeer);
@@ -379,23 +389,24 @@ Subscriber must provide access token in x-custom-auth-token header field.
         }
         else
         {
-            SPDLOG_LOGGER_INFO(mLogger, "{} connected to subscribe to all RPC", mPeer);
+            SPDLOG_LOGGER_INFO(mLogger, "{} connected to subscribe to all RPC.", mPeer);
         }
 
         // Resource exhausted?
-int maximumNumberOfSubscribers = 8;
+        auto maximumNumberOfSubscribers
+            = mOptions.getMaximumNumberOfSubscribers();
         if (mSubscriptionManager->getNumberOfSubscribers() >=
             maximumNumberOfSubscribers)
         {
             SPDLOG_LOGGER_WARN(mLogger,
-                "Subscribe to all RPC rejecting {} because max number of subscribers hit",
+                "Subscribe to all RPC rejecting {} because max number of subscribers hit.",
                  mPeer);
             grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 "Max subscribers hit - try again later"};
             Finish(status);
        }
 
-        // Subscribe
+        // Allow client to subscribe
         try
         {
             SPDLOG_LOGGER_INFO(mLogger,
@@ -409,7 +420,7 @@ int maximumNumberOfSubscribers = 8;
                  /std::max(1, maximumNumberOfSubscribers);
 //            mMetrics.updateSubscriberUtilization(utilization);
             SPDLOG_LOGGER_INFO(mLogger,
-                          "Now managing {} subscribers (Resource {} pct utilized)",
+                          "Now managing {} subscribers.  Resource {} pct utilized.",
                           nSubscribers, utilization*100.0);
         }
         catch (const std::exception &e)
@@ -424,6 +435,33 @@ int maximumNumberOfSubscribers = 8;
         nextWrite();
 
     }   
+
+    // This needs to perform quickly.  I should do blocking work but
+    // this is my last ditch effort to evict the context from the 
+    // subscription manager..
+    void OnDone() override
+    {
+        if (mContext)
+        {
+            if (!mSubscribed)
+            {
+                mSubscriptionManager->unsubscribeFromAll(mContextAddress);
+                mSubscribed = false;
+            }
+        }
+        auto maximumNumberOfSubscribers
+            = mOptions.getMaximumNumberOfSubscribers();
+        auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
+            auto utilization
+                = static_cast<double> (nSubscribers)
+                 /std::max(1, maximumNumberOfSubscribers);
+        SPDLOG_LOGGER_INFO(mLogger,
+            "Subscribe to all RPC completed for {}.  Subscription manager is now managing {} subscribers.  Resource {} pct utilized.",
+            mPeer,
+            std::to_string(nSubscribers),
+            utilization*100.0);
+        delete this;
+    }
 
     void OnCancel() override
     {   
@@ -469,6 +507,12 @@ int maximumNumberOfSubscribers = 8;
                          = mSubscriptionManager->getPackets(mContextAddress);
                     for (auto &packet : packetsBuffer)
                     {
+                        bool allow{true};
+                        if (mCheckPackets)
+                        {
+
+                        }
+                        if (!allow){continue;}
                         if (mPacketsQueue.size() > mMaximumQueueSize)
                         {
                             SPDLOG_LOGGER_WARN(mLogger,
@@ -528,7 +572,7 @@ int maximumNumberOfSubscribers = 8;
 
     grpc::CallbackServerContext *mContext{nullptr};
     uintptr_t mContextAddress;
-    SubscriberOptions mOptions;
+    ServerOptions mOptions;
     std::shared_ptr
     <   
         UDataPacketService::SubscriptionManager
@@ -541,6 +585,7 @@ int maximumNumberOfSubscribers = 8;
     std::chrono::milliseconds mTimeOut{20};
     bool mSubscribed{false};
     bool mWriteInProgress{false};
+    bool mCheckPackets{false};
 };
 
 }

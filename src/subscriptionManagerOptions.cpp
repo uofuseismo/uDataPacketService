@@ -8,7 +8,7 @@ class SubscriptionManagerOptions::SubscriptionManagerOptionsImpl
 {
 public:
     StreamOptions mStreamOptions;
-    int mMaximumNumberOfSubscribers{16};
+    //int mMaximumNumberOfSubscribers{16};
 };
 
 /// Constructor
@@ -63,6 +63,7 @@ StreamOptions SubscriptionManagerOptions::getStreamOptions() const noexcept
     return pImpl->mStreamOptions;
 }
 
+/*
 /// Max subscribers
 void SubscriptionManagerOptions::setMaximumNumberOfSubscribers(
     const int maxSubscribers)
@@ -79,5 +80,6 @@ int SubscriptionManagerOptions::getMaximumNumberOfSubscribers() const noexcept
 {
     return pImpl->mMaximumNumberOfSubscribers;
 }
+*/
 
 

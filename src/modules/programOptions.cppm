@@ -9,6 +9,7 @@ module;
 #include <boost/program_options.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
+#include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/subscriberOptions.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/streamOptions.hpp"
@@ -40,6 +41,7 @@ export struct OTelHTTPLogOptions
 export struct ProgramOptions
 {
     std::string applicationName{APPLICATION_NAME};
+    ServerOptions serverOptions;
     SubscriberOptions subscriberOptions;
     SubscriptionManagerOptions subscriptionManagerOptions;
     OTelHTTPMetricsOptions otelHTTPMetricsOptions;
@@ -333,20 +335,30 @@ export ProgramOptions
     }
 
     // Server
+    ServerOptions serverOptions;
     auto serverGRPCOptions
         = getGRPCServerOptions(propertyTree, "Service");
-
+    serverOptions.setGRPCOptions(serverGRPCOptions); 
+    auto maxSubscribers
+        = propertyTree.get<int> ("Server.maximumNumberOfSubscribers",
+                                 serverOptions.getMaximumNumberOfSubscribers());
+    if (maxSubscribers < 1)
+    {
+        throw std::invalid_argument("Server.maximumNumberOfSubscribers "
+                                  + std::to_string(maxSubscribers)
+                                  + " must be positive");
+    }
+    serverOptions.setMaximumNumberOfSubscribers(maxSubscribers);
+    options.serverOptions = serverOptions;
 
     // Subscriber
     SubscriberOptions subscriberOptions;
     auto subscriberGRPCOptions
         = getGRPCClientOptions(propertyTree, "Subscriber");
     subscriberOptions.setGRPCOptions(subscriberGRPCOptions);
-    options.subscriberOptions = subscriberOptions;
     subscriberOptions.setIdentifier(options.applicationName
                                   + "-import-subscriber");
-    
-    
+    options.subscriberOptions = subscriberOptions;
 
     return options;
 }

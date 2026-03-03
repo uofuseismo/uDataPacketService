@@ -578,7 +578,6 @@ void SubscriptionManager::subscribe(
     std::set<std::string> existingNames;
     for (const auto &identifier : streamIdentifiersIn)
     {
-        bool exists{false};
         auto thisName = Utilities::toName(identifier);
         if (!existingNames.contains(thisName))
         {

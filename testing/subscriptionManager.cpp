@@ -24,7 +24,7 @@
 TEST_CASE("UDataPacketService", "[SubscriptionManagerOptions]")
 {
     using namespace UDataPacketService;
-    constexpr int maxSubscribers{599};
+    //constexpr int maxSubscribers{599};
     constexpr int maxStreamQueueSize{832};
     StreamOptions streamOptions;
     streamOptions.setMaximumQueueSize(maxStreamQueueSize);
@@ -32,9 +32,9 @@ TEST_CASE("UDataPacketService", "[SubscriptionManagerOptions]")
     SECTION("Set/get")
     {
         SubscriptionManagerOptions options;
-        options.setMaximumNumberOfSubscribers(maxSubscribers);
+        //options.setMaximumNumberOfSubscribers(maxSubscribers);
         options.setStreamOptions(streamOptions);
-        REQUIRE(options.getMaximumNumberOfSubscribers() == maxSubscribers);
+        //REQUIRE(options.getMaximumNumberOfSubscribers() == maxSubscribers);
         REQUIRE(options.getStreamOptions().getMaximumQueueSize() == maxStreamQueueSize);
     }
 
@@ -45,7 +45,7 @@ TEST_CASE("UDataPacketService", "[SubscriptionManagerOptions]")
     }
 }
 
-TEST_CASE("UDataPacketServer", "[SubsciptionManager]")
+TEST_CASE("UDataPacketServer", "[SubscriptionManager]")
 {
     const std::array<std::string, 3> channels{"HHZ", "HHN", "HHE"};
     const std::string network{"UU"};

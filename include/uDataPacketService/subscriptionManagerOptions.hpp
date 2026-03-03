@@ -23,9 +23,9 @@ public:
 
     /// @brief Sets the maximum number of subscribers.
     /// @param[in] maxSubscribers  The maximum number of subscribers.
-    void setMaximumNumberOfSubscribers(int maxSubscribers);
+    //void setMaximumNumberOfSubscribers(int maxSubscribers);
     /// @result The maximum number of subscribers.
-    [[nodiscard]] int getMaximumNumberOfSubscribers() const noexcept;
+    //[[nodiscard]] int getMaximumNumberOfSubscribers() const noexcept;
 
     /// @brief Sets the options defining the behavior of the data streams.
     /// @param[in] options   The data streams options. 
