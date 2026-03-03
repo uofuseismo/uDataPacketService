@@ -190,7 +190,7 @@ endif()
 #                                      Installation                                      #
 ##########################################################################################
 include(CMakePackageConfigHelpers)
-configure_file(${PROJECT_SOURCE_DIR}/cmake/${PROJECT_NAME}.cmake.in
+configure_file(${PROJECT_SOURCE_DIR}/cmake/${PROJECT_NAME}Config.cmake.in
                ${PROJECT_NAME}Config.cmake @ONLY)
 write_basic_package_version_file(
    ${PROJECT_NAME}ConfigVersion.cmake
