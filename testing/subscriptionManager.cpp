@@ -18,7 +18,7 @@
 #include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
-#include "uDataPacketService/grpcOptions.hpp"
+#include "uDataPacketService/grpcServerOptions.hpp"
 #include "utilities.hpp"
 
 TEST_CASE("UDataPacketService", "[SubscriptionManagerOptions]")
@@ -75,8 +75,11 @@ TEST_CASE("UDataPacketServer", "[SubsciptionManager]")
         auto subscriberID1 = reinterpret_cast<uintptr_t> (&myThreadID);
         auto subscriberID2 = reinterpret_cast<uintptr_t> (&myThreadID) + 1;
  
+        REQUIRE(subscriptionManager.getNumberOfSubscribers() == 0);
+
         // First thread subscribes to all
         subscriptionManager.subscribeToAll(subscriberID1);
+        REQUIRE(subscriptionManager.getNumberOfSubscribers() == 1);
 
         // Second thread subscribes to some
         std::vector<UDataPacketServiceAPI::V1::StreamIdentifier> streamIdentifiers;
@@ -84,6 +87,7 @@ TEST_CASE("UDataPacketServer", "[SubsciptionManager]")
         streamIdentifiers.push_back(identifier3);
         streamIdentifiers.push_back(identifier3); // Duplicate
         subscriptionManager.subscribe(subscriberID2, streamIdentifiers);
+        REQUIRE(subscriptionManager.getNumberOfSubscribers() == 2);
         
        
 
@@ -159,6 +163,11 @@ TEST_CASE("UDataPacketServer", "[SubsciptionManager]")
                 REQUIRE(foundIt);
             }
         }
+
+        subscriptionManager.unsubscribeFromAll(subscriberID2);
+        REQUIRE(subscriptionManager.getNumberOfSubscribers() == 1);
+        subscriptionManager.unsubscribeFromAll(subscriberID1);
+        REQUIRE(subscriptionManager.getNumberOfSubscribers() == 0);
     }
 
 

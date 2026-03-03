@@ -5,7 +5,7 @@
 #include <memory>
 namespace UDataPacketService
 {
- class GRPCOptions;
+ class GRPCClientOptions;
 }
 namespace UDataPacketService
 {
@@ -25,9 +25,9 @@ public:
     SubscriberOptions(SubscriberOptions &&options) noexcept;
 
     /// @brief GRPC connection options.
-    void setGRPCOptions(const GRPCOptions &options);
+    void setGRPCOptions(const GRPCClientOptions &options);
     /// @result The gRPC connection options.
-    [[nodiscard]] GRPCOptions getGRPCOptions() const;
+    [[nodiscard]] GRPCClientOptions getGRPCOptions() const;
 
     /// @brief Sets the reconnection schedule.
     void setReconnectSchedule(const std::vector<std::chrono::milliseconds> &reconnectSchedule);

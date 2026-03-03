@@ -88,6 +88,9 @@ public:
     [[nodiscard]] std::set<uintptr_t> getSubscribers() const noexcept;
     /// @result True indicates this subscriber is subscribed.
     [[nodiscard]] bool isSubscribed(uintptr_t contextAddress) const noexcept;
+    /// @brief Forcefully purges all subscribers.  This is used during 
+    ///        application shutdown.
+    void unsubscribeAll();
     /// @}
 
     /// @brief Destructor

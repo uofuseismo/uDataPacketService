@@ -8,7 +8,6 @@
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <google/protobuf/util/time_util.h>
-#include "uDataPacketService/grpcOptions.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "utilities.hpp"

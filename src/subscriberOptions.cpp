@@ -2,14 +2,14 @@
 #include <algorithm>
 #include <chrono>
 #include "uDataPacketService/subscriberOptions.hpp"
-#include "uDataPacketService/grpcOptions.hpp"
+#include "uDataPacketService/grpcClientOptions.hpp"
 
 using namespace UDataPacketService;
 
 class SubscriberOptions::SubscriberOptionsImpl
 {
 public:
-    GRPCOptions mGRPCOptions;
+    GRPCClientOptions mGRPCOptions;
     std::vector<std::chrono::milliseconds> mReconnectSchedule
     {
         std::chrono::seconds {0},
@@ -56,12 +56,12 @@ SubscriberOptions::operator=(SubscriberOptions &&options) noexcept
 }
 
 /// GRPC options
-void SubscriberOptions::setGRPCOptions(const GRPCOptions &options)
+void SubscriberOptions::setGRPCOptions(const GRPCClientOptions &options)
 {
     pImpl->mGRPCOptions = options;
 }
 
-GRPCOptions SubscriberOptions::getGRPCOptions() const
+GRPCClientOptions SubscriberOptions::getGRPCOptions() const
 {
     return pImpl->mGRPCOptions;
 }

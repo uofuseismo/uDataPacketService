@@ -1,53 +1,55 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
-#include "uDataPacketService/grpcOptions.hpp"
+#include "uDataPacketService/grpcClientOptions.hpp"
 
 using namespace UDataPacketService;
 
-class GRPCOptions::GRPCOptionsImpl
+class GRPCClientOptions::GRPCClientOptionsImpl
 {
 public:
     std::string mHost{"localhost"};
     std::string mAccessToken;
     std::string mServerCertificate;
-    std::string mClientKey;
     std::string mClientCertificate;
+    std::string mClientKey;
     uint16_t mPort{50000};
     bool mHaveServerCertificate{false}; 
-    bool mHaveClientKey{false};
     bool mHaveClientCertificate{false};
+    bool mHaveClientKey{false};
     bool mHaveAccessToken{false};
 };
 
 /// Constructor
-GRPCOptions::GRPCOptions() :
-    pImpl(std::make_unique<GRPCOptionsImpl> ())
+GRPCClientOptions::GRPCClientOptions() :
+    pImpl(std::make_unique<GRPCClientOptionsImpl> ())
 {
 }
 
 /// Copy constructor
-GRPCOptions::GRPCOptions(const GRPCOptions &options)
+GRPCClientOptions::GRPCClientOptions(const GRPCClientOptions &options)
 {
     *this = options;
 }
 
 /// Move constructor
-GRPCOptions::GRPCOptions(GRPCOptions &&options) noexcept
+GRPCClientOptions::GRPCClientOptions(GRPCClientOptions &&options) noexcept
 {
     *this = std::move(options);
 }
 
 /// Copy assignment
-GRPCOptions& GRPCOptions::operator=(const GRPCOptions &options)
+GRPCClientOptions& 
+GRPCClientOptions::operator=(const GRPCClientOptions &options)
 {
     if (&options == this){return *this;}
-    pImpl = std::make_unique<GRPCOptionsImpl> (*options.pImpl);
+    pImpl = std::make_unique<GRPCClientOptionsImpl> (*options.pImpl);
     return *this;
 }
 
 /// Move assignment
-GRPCOptions& GRPCOptions::operator=(GRPCOptions &&options) noexcept
+GRPCClientOptions& 
+GRPCClientOptions::operator=(GRPCClientOptions &&options) noexcept
 {
     if (&options == this){return *this;}
     pImpl = std::move(options.pImpl);
@@ -55,10 +57,10 @@ GRPCOptions& GRPCOptions::operator=(GRPCOptions &&options) noexcept
 }
 
 /// Destructor
-GRPCOptions::~GRPCOptions() = default; 
+GRPCClientOptions::~GRPCClientOptions() = default; 
 
 /// Host
-void GRPCOptions::setHost(const std::string &hostIn)
+void GRPCClientOptions::setHost(const std::string &hostIn)
 {
     auto host = hostIn;
     host.erase(
@@ -71,18 +73,18 @@ void GRPCOptions::setHost(const std::string &hostIn)
     pImpl->mHost = host;
 }
 
-std::string GRPCOptions::getHost() const noexcept
+std::string GRPCClientOptions::getHost() const noexcept
 {
     return pImpl->mHost;
 }
 
-std::string UDataPacketService::makeAddress(const GRPCOptions &options)
+std::string UDataPacketService::makeAddress(const GRPCClientOptions &options)
 {
     return options.getHost() + ":" + std::to_string(options.getPort());
 }
 
 /// Port
-void GRPCOptions::setPort(const uint16_t port)
+void GRPCClientOptions::setPort(const uint16_t port)
 {
     if (port < 1)
     {
@@ -91,13 +93,13 @@ void GRPCOptions::setPort(const uint16_t port)
     pImpl->mPort = port;
 }
 
-uint16_t GRPCOptions::getPort() const noexcept
+uint16_t GRPCClientOptions::getPort() const noexcept
 {
     return pImpl->mPort;
 }
 
 /// Server cert
-void GRPCOptions::setServerCertificate(const std::string &cert)
+void GRPCClientOptions::setServerCertificate(const std::string &cert)
 {
     if (cert.empty())
     {
@@ -107,32 +109,15 @@ void GRPCOptions::setServerCertificate(const std::string &cert)
     pImpl->mServerCertificate = cert;
 }
 
-std::optional<std::string> GRPCOptions::getServerCertificate() const noexcept
+std::optional<std::string> GRPCClientOptions::getServerCertificate() const noexcept
 {
     return pImpl->mHaveServerCertificate ? 
            std::make_optional<std::string> (pImpl->mServerCertificate) :
            std::nullopt;
 }
 
-/// Client certs
-void GRPCOptions::setClientKey(const std::string &key)
-{   
-    if (key.empty())
-    {   
-        throw std::invalid_argument("Client key is empty");
-    }
-    pImpl->mHaveClientKey = true;
-    pImpl->mClientKey = key;
-}
-
-std::optional<std::string> GRPCOptions::getClientKey() const noexcept
-{
-    return pImpl->mHaveClientKey ? 
-           std::make_optional<std::string> (pImpl->mClientKey) :
-           std::nullopt;
-}
-
-void GRPCOptions::setClientCertificate(const std::string &cert)
+/// Client cert
+void GRPCClientOptions::setClientCertificate(const std::string &cert)
 {
     if (cert.empty())
     {   
@@ -142,22 +127,39 @@ void GRPCOptions::setClientCertificate(const std::string &cert)
     pImpl->mClientCertificate = cert;
 }
 
-std::optional<std::string> GRPCOptions::getClientCertificate() const noexcept
+std::optional<std::string> GRPCClientOptions::getClientCertificate() const noexcept
 {
     return pImpl->mHaveClientCertificate ? 
            std::make_optional<std::string> (pImpl->mClientCertificate) :
            std::nullopt;
 }
 
+void GRPCClientOptions::setClientKey(const std::string &key)
+{   
+    if (key.empty())
+    {   
+        throw std::invalid_argument("Client key is empty");
+    }
+    pImpl->mHaveClientKey = true;
+    pImpl->mClientKey = key;
+}
+
+std::optional<std::string> GRPCClientOptions::getClientKey() const noexcept
+{
+    return pImpl->mHaveClientKey ? 
+           std::make_optional<std::string> (pImpl->mClientKey) :
+           std::nullopt;
+}
+
 /// Access token
-void GRPCOptions::setAccessToken(const std::string &token)
+void GRPCClientOptions::setAccessToken(const std::string &token)
 {
     if (token.empty()){throw std::invalid_argument("Token is empty");}
     pImpl->mHaveAccessToken = true;
     pImpl->mAccessToken = token;
 }
 
-std::optional<std::string> GRPCOptions::getAccessToken() const noexcept
+std::optional<std::string> GRPCClientOptions::getAccessToken() const noexcept
 {
     return pImpl->mHaveAccessToken ?
            std::make_optional<std::string> (pImpl->mAccessToken) : std::nullopt;

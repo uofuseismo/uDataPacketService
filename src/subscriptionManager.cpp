@@ -444,6 +444,28 @@ public:
         return mNumberOfSubscribers;
     }
 
+    void unsubscribeAll()
+    {
+        // Do not let these get filled while I'm clearing
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
+        mNumberOfSubscribers =-1;
+        mPendingSubscriptionRequests.clear();
+        mPendingSubscribeToAllRequests.clear();
+        }
+        // Purge the active subscriptions 
+        for (auto &stream : mStreamsMap)
+        {
+             stream.second->unsubscribeAll();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds {10});
+        // Check
+        if (getNumberOfSubscribers() != 0)
+        {
+            SPDLOG_LOGGER_WARN(mLogger, "May not have purged all subscribers");
+        }
+    }
+
     void addToActiveSubscriptionsMap(uintptr_t contextAddress,
                                      const std::string &streamIdentifier)
     {
@@ -553,20 +575,16 @@ void SubscriptionManager::subscribe(
     }
     // Create a set of identifiers
     std::vector<UDataPacketServiceAPI::V1::StreamIdentifier> streamIdentifiers;
+    std::set<std::string> existingNames;
     for (const auto &identifier : streamIdentifiersIn)
     {
         bool exists{false};
         auto thisName = Utilities::toName(identifier);
-        for (const auto &existingIdentifier : streamIdentifiers)
+        if (!existingNames.contains(thisName))
         {
-            auto existingName = Utilities::toName(existingIdentifier);
-            if (thisName == existingName)
-            {
-                exists = true;
-                break;
-            } 
+            streamIdentifiers.push_back(identifier);
+            existingNames.insert(thisName);
         }
-        if (!exists){streamIdentifiers.push_back(identifier);}
     }
     if (streamIdentifiers.empty())
     {
@@ -581,7 +599,7 @@ void SubscriptionManager::subscribeToAll(uintptr_t contextAddress)
     pImpl->subscribeToAll(contextAddress);
 }
 
-
+/*
 template<typename U>
 void SubscriptionManager::unsubscribeFromAll(U *serverContext)
 {
@@ -593,6 +611,7 @@ void SubscriptionManager::unsubscribeFromAll(U *serverContext)
         = reinterpret_cast<uintptr_t> (serverContext);
     return unsubscribeFromAll(contextAddress);
 }
+*/
 
 void SubscriptionManager::unsubscribeFromAll(uintptr_t contextAddress)
 {
@@ -613,6 +632,12 @@ SubscriptionManager::~SubscriptionManager() = default;
 int SubscriptionManager::getNumberOfSubscribers() const noexcept
 {
     return pImpl->getNumberOfSubscribers();
+}
+
+/// Forcefully removes all subscxribers
+void SubscriptionManager::unsubscribeAll()
+{
+    pImpl->unsubscribeAll();
 }
 
 ///--------------------------------------------------------------------------///

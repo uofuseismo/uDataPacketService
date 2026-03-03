@@ -12,7 +12,8 @@ module;
 #include "uDataPacketService/subscriberOptions.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/streamOptions.hpp"
-#include "uDataPacketService/grpcOptions.hpp"
+#include "uDataPacketService/grpcServerOptions.hpp"
+#include "uDataPacketService/grpcClientOptions.hpp"
 
 export module ProgramOptions;
 
@@ -125,11 +126,12 @@ loadStringFromFile(const std::filesystem::path &path)
     return result;
 }
 
-[[nodiscard]] UDataPacketService::GRPCOptions getGRPCOptions(
+[[nodiscard]] UDataPacketService::GRPCClientOptions
+    getGRPCClientOptions(
     const boost::property_tree::ptree &propertyTree,
     const std::string &section)
 {
-    UDataPacketService::GRPCOptions options;
+    UDataPacketService::GRPCClientOptions options;
 
     auto host
         = propertyTree.get<std::string> (section + ".host",
@@ -193,6 +195,77 @@ loadStringFromFile(const std::filesystem::path &path)
         options.setClientCertificate(loadStringFromFile(clientCertificate));
     }
     return options;
+}
+
+[[nodiscard]] UDataPacketService::GRPCServerOptions
+    getGRPCServerOptions(
+    const boost::property_tree::ptree &propertyTree,
+    const std::string &section)
+{
+    UDataPacketService::GRPCServerOptions options;
+
+    auto host
+        = propertyTree.get<std::string> (section + ".host",
+                                         options.getHost());
+    if (host.empty())
+    {   
+        throw std::runtime_error(section + ".host is empty");
+    }   
+    options.setHost(host);
+
+    uint16_t port{50000};
+    options.setPort(port);
+
+    port = propertyTree.get<uint16_t> (section + ".port", options.getPort());
+    options.setPort(port);
+
+    auto serverCertificate
+        = propertyTree.get<std::string> (section + ".serverCertificate", "");
+    auto serverKey
+        = propertyTree.get<std::string> (section + ".serverKey", "");
+    if (!serverCertificate.empty() && !serverKey.empty())
+    {
+        if (!std::filesystem::exists(serverCertificate))
+        {
+            throw std::invalid_argument("gRPC server certificate file "
+                                      + serverCertificate
+                                      + " does not exist");
+        }
+        if (!std::filesystem::exists(serverKey))
+        {   
+            throw std::invalid_argument("gRPC server key file "
+                                      + serverKey
+                                      + " does not exist");
+        }
+        options.setServerCertificate(loadStringFromFile(serverCertificate));
+        options.setServerKey(loadStringFromFile(serverKey));
+    }
+    
+    auto accessToken
+        = propertyTree.get_optional<std::string> (section + ".accessToken");
+    if (accessToken)
+    {
+        if (options.getServerCertificate() == std::nullopt)
+        { 
+            throw std::invalid_argument(
+                "Must set server certificate to use access token");
+        }
+        options.setAccessToken(*accessToken);
+    }
+
+    auto clientCertificate
+        = propertyTree.get<std::string> (section + ".clientCertificate", "");
+    if (!clientCertificate.empty())
+    {
+        if (!std::filesystem::exists(clientCertificate))
+        {
+            throw std::invalid_argument("gRPC client certificate file "
+                                      + clientCertificate
+                                      + " does not exist");
+        }
+        options.setClientCertificate(loadStringFromFile(clientCertificate));
+    }
+    return options;        
 }
 
 export ProgramOptions
@@ -259,9 +332,15 @@ export ProgramOptions
         }
     }
 
+    // Server
+    auto serverGRPCOptions
+        = getGRPCServerOptions(propertyTree, "Service");
+
+
     // Subscriber
     SubscriberOptions subscriberOptions;
-    auto subscriberGRPCOptions = getGRPCOptions(propertyTree, "Subscriber");
+    auto subscriberGRPCOptions
+        = getGRPCClientOptions(propertyTree, "Subscriber");
     subscriberOptions.setGRPCOptions(subscriberGRPCOptions);
     options.subscriberOptions = subscriberOptions;
     subscriberOptions.setIdentifier(options.applicationName

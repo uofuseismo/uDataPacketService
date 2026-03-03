@@ -66,11 +66,8 @@ public:
     /// @result The next batch of received packets.
     [[nodiscard]] std::vector<UDataPacketServiceAPI::V1::Packet> getPackets(uintptr_t contextAddress) const;
 
-    /// @brief Subscribe to a subset of streams.
-    /// @param[in] 
     /// @brief Unsubscribes the server context from all subscriptions.
-    /// @param[in] serverContext  The server context.
-    template<typename U> void unsubscribeFromAll(U *serverContext);
+    /// @param[in] contextAddress  The context address to unsubscribe.
     void unsubscribeFromAll(uintptr_t contextAddress);
     /// @}
 
@@ -79,6 +76,9 @@ public:
 
     /// @result The total number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;
+    /// @brief Forcefully purges all subscribers.  This is used during 
+    ///        application shutdown.
+    void unsubscribeAll();
     /// @}
  
     /// @brief Destructor.

@@ -14,7 +14,6 @@
 #include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
-#include "uDataPacketService/grpcOptions.hpp"
 #include "utilities.hpp"
 
 namespace

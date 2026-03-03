@@ -42,7 +42,8 @@ set(EXPORT_PROTO_SRC
     uDataPacketServiceAPI/v1/broadcast.proto
     )
 set(LIBRARY_SRC
-    src/grpcOptions.cpp
+    src/grpcClientOptions.cpp
+    src/grpcServerOptions.cpp
     src/subscriberOptions.cpp
     src/subscriber.cpp
     src/futurePacketDetector.cpp
@@ -69,7 +70,8 @@ set(MODULE_FILES
     src/modules/metrics.cppm
     src/modules/otelSpdlogSink.cppm
     src/modules/utilities.cppm
-    src/modules/asyncWriter.cppm
+    #src/modules/asyncWriter.cppm
+    src/modules/server.cppm
     )
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})

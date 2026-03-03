@@ -1,20 +1,20 @@
-#ifndef UDATA_PACKET_SERVICE_GRPC_OPTIONS_HPP
-#define UDATA_PACKET_SERVICE_GRPC_OPTIONS_HPP
+#ifndef UDATA_PACKET_SERVICE_GRPC_SERVER_OPTIONS_HPP
+#define UDATA_PACKET_SERVICE_GRPC_SERVER_OPTIONS_HPP
 #include <string>
 #include <memory>
 #include <filesystem>
 #include <optional>
 namespace UDataPacketService
 {
-/// @class GRPCOptions 
-/// @brief Defines the gRPC client options.
+/// @class GRPCServerOptions 
+/// @brief Defines the gRPC server options.
 /// @copyright Ben Baker (University of Utah) distributed under the
 ///            MIT NO AI license.
-class GRPCOptions
+class GRPCServerOptions
 {
 public:
     /// @brief Constructor
-    GRPCOptions();
+    GRPCServerOptions();
 
     /// @brief Sets the host name - e.g., localhost or machine.domain.com.
     void setHost(const std::string &host);
@@ -42,32 +42,32 @@ public:
     /// @note The server key must also be set for gRPC to use this.
     [[nodiscard]] std::optional<std::string> getServerCertificate() const noexcept;
 
+    /// @brief Sets the server's key.  This is private - e.g., localhost.key.
+    void setServerKey(const std::string &key);
+    /// @result The server key.
+    /// @note The server certificate must also be set for gRPC to use this.
+    [[nodiscard]] std::optional<std::string> getServerKey() const noexcept;
+
     /// @brief Sets the client certificate for a full key exchange.
     void setClientCertificate(const std::string &certificate);
     /// @result The client ceritificate.
     [[nodiscard]] std::optional<std::string> getClientCertificate() const noexcept;
 
-    /// @brief Sets the client's key.  This is private - e.g., localhost.key.
-    void setClientKey(const std::string &key);
-    /// @result The client key.
-    /// @note The client key must also be set for gRPC to use this.
-    [[nodiscard]] std::optional<std::string> getClientKey() const noexcept;
-
     /// @brief Destructor
-    ~GRPCOptions();
+    ~GRPCServerOptions();
     /// @brief Copy constructor.
-    GRPCOptions(const GRPCOptions &options);
+    GRPCServerOptions(const GRPCServerOptions &options);
     /// @brief Move constructor.
-    GRPCOptions(GRPCOptions &&options) noexcept;
+    GRPCServerOptions(GRPCServerOptions &&options) noexcept;
     /// @brief Copy assignment.
-    GRPCOptions& operator=(const GRPCOptions &options);
+    GRPCServerOptions& operator=(const GRPCServerOptions &options);
     /// @brief Move assignment.
-    GRPCOptions& operator=(GRPCOptions &&options) noexcept;
+    GRPCServerOptions& operator=(GRPCServerOptions &&options) noexcept;
 private:
-    class GRPCOptionsImpl;
-    std::unique_ptr<GRPCOptionsImpl> pImpl;
+    class GRPCServerOptionsImpl;
+    std::unique_ptr<GRPCServerOptionsImpl> pImpl;
 };
 /// @brief Convenience function to convert host and port to an address for gRPC.
-[[nodiscard]] std::string makeAddress(const GRPCOptions &options);
+[[nodiscard]] std::string makeAddress(const GRPCServerOptions &options);
 }
 #endif

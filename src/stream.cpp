@@ -190,6 +190,12 @@ public:
         return wasUnsubscribed;
     }
 
+    /// Forcefully purge all subscribers
+    void unsubscribeAll()
+    {
+        std::lock_guard<std::mutex> lock(mMutex);        
+        mSubscribersMap.clear();
+    }
 
     /// Sets the next packet
     void setNextPacket(const UDataPacketServiceAPI::V1::Packet &packet)
@@ -300,6 +306,11 @@ bool Stream::isSubscribed(const uintptr_t contextAddress) const noexcept
 std::string Stream::getIdentifier() const noexcept
 {
     return pImpl->mStreamIdentifier;
+}
+
+void Stream::unsubscribeAll()
+{
+    pImpl->unsubscribeAll();
 }
 
 /// Destructor

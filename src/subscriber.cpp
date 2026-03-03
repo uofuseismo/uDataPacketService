@@ -8,7 +8,7 @@
 #include <grpc/grpc.h>
 #include <grpcpp/grpcpp.h>
 #include "uDataPacketService/subscriber.hpp"
-#include "uDataPacketService/grpcOptions.hpp"
+#include "uDataPacketService/grpcClientOptions.hpp"
 #include "uDataPacketService/subscriberOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
@@ -40,7 +40,7 @@ public:
 };
 
 std::shared_ptr<grpc::Channel>
-    createChannel(const UDataPacketService::GRPCOptions &options,
+    createChannel(const UDataPacketService::GRPCClientOptions &options,
                   spdlog::logger *logger)
 {
     auto address = UDataPacketService::makeAddress(options);
