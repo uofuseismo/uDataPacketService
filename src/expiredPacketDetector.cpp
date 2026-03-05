@@ -3,7 +3,6 @@
 #include <chrono>
 #include <mutex>
 #include <set>
-#include <spdlog/spdlog.h>
 #include <google/protobuf/util/time_util.h>
 #include "uDataPacketService/expiredPacketDetector.hpp"
 #include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"

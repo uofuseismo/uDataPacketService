@@ -387,10 +387,7 @@ int main(int argc, char *argv[])
         SPDLOG_LOGGER_CRITICAL(logger,
                                "Failed to initialize metrics because {}",
                                std::string {e.what()});
-        if (programOptions.exportLogs)
-        {
-            UDataPacketService::Logger::cleanup();
-        }
+        UDataPacketService::Logger::cleanup();
         return EXIT_FAILURE;
     }   
 
