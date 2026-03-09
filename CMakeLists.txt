@@ -15,7 +15,7 @@ if (NOT ${BUILD_SHARED_LIBS})
    set(Boost_USE_STATIC_LIBS ON) 
 endif()
 find_package(absl CONFIG REQUIRED)
-find_package(utf8_range CONFIG REQUIRED)
+#find_package(utf8_range CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(opentelemetry-cpp REQUIRED)
@@ -47,6 +47,7 @@ set(LIBRARY_SRC
     src/duplicatePacketDetector.cpp
     src/grpcClientOptions.cpp
     src/grpcServerOptions.cpp
+    src/server.cpp
     src/serverOptions.cpp
     src/stream.cpp
     src/streamOptions.cpp
@@ -78,7 +79,7 @@ set(MODULE_FILES
     src/modules/otelSpdlogSink.cppm
     src/modules/utilities.cppm
     src/modules/asyncWriter.cppm
-    src/modules/server.cppm
+    #src/modules/server.cppm
     )
 
 add_library(libuDataPacketService STATIC ${LIBRARY_SRC})
@@ -163,7 +164,9 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                   testing/packetConverter.cpp
                   testing/sanitizer.cpp
                   testing/stream.cpp
-                  testing/subscriptionManager.cpp)
+                  testing/subscriptionManager.cpp
+                  testing/server.cpp
+                  )
    set_target_properties(unitTests PROPERTIES
                          CXX_STANDARD 20
                          CXX_STANDARD_REQUIRED YES 

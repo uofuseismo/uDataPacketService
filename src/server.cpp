@@ -1,26 +1,25 @@
-module;
 #include <atomic>
 #include <thread>
 #include <chrono>
 #include <grpcpp/grpcpp.h>
 #include <spdlog/spdlog.h>
+#include "uDataPacketService/server.hpp"
 #include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/grpcServerOptions.hpp"
 #include "uDataPacketServiceAPI/v1/broadcast.grpc.pb.h"
 
-export module Server;
 import AsyncWriter;
 
-namespace UDataPacketService
-{
- 
-export
-class Service : public UDataPacketServiceAPI::V1::Broadcast::CallbackService
+using namespace UDataPacketService;
+
+class Server::ServerImpl :
+    public UDataPacketServiceAPI::V1::Broadcast::CallbackService
 {
 public:
-    Service(const ServerOptions &options,
-            std::shared_ptr<spdlog::logger> logger) :
+    /// Constructor
+    ServerImpl(const ServerOptions &options,
+                std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
         mLogger(logger)
     {
@@ -34,7 +33,8 @@ public:
         }
     }    
 
-    ~Service() override
+    /// Destructor
+    ~ServerImpl() override
     {   
         stop();
         std::this_thread::sleep_for(std::chrono::milliseconds {15});
@@ -79,6 +79,7 @@ public:
         mServer = builder.BuildAndStart();
     }
 
+    /// Stop the service
     void stop()
     {   
         mKeepRunning.store(false);
@@ -125,18 +126,50 @@ public:
         mSubscriptionManager->enqueuePacket(std::move(packet));
     }
 
+    /// Number of packets.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept
     {
         return mSubscriptionManager->getNumberOfSubscribers();
     }
-private:
+//private:
     ServerOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::shared_ptr<SubscriptionManager> mSubscriptionManager{nullptr};
     std::unique_ptr<grpc::Server> mServer{nullptr};
     std::atomic<bool> mKeepRunning{true};
     bool mSecureConnection{false};  
-
 };
 
+/// Constructor
+Server::Server(const ServerOptions &options,
+               std::shared_ptr<spdlog::logger> logger) :
+    pImpl(std::make_unique<ServerImpl> (options, logger))
+{
 }
+
+/// Start
+void Server::start()
+{
+    pImpl->start();
+}
+
+/// Stop
+void Server::stop()
+{
+    pImpl->stop();
+}
+
+/// Enqueue packet
+void Server::enqueuePacket(UDataPacketServiceAPI::V1::Packet &&packet)
+{
+    pImpl->enqueuePacket(std::move(packet));
+}
+
+/// Number of subscribers
+int Server::getNumberOfSubscribers() const noexcept
+{
+    return pImpl->getNumberOfSubscribers();
+}
+
+/// Destructor
+Server::~Server() = default;

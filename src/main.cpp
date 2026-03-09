@@ -2,7 +2,7 @@ import ProgramOptions;
 import Logger;
 import Metrics;
 import Utilities;
-import Server;
+//import Server;
 import PacketConverter;
 
 #include <iostream>
@@ -22,7 +22,8 @@ import PacketConverter;
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
-//#include "uDataPacketService/server.hpp"
+#include "uDataPacketService/server.hpp"
+#include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/subscriber.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
 
@@ -48,7 +49,7 @@ public:
             = std::make_unique<UDataPacketService::Subscriber>
               (mOptions.subscriberOptions, mAddPacketCallbackFunction, mLogger);
         mService 
-            = std::make_unique<UDataPacketService::Service>
+            = std::make_unique<UDataPacketService::Server>
               (mOptions.serverOptions, mLogger);
         mSubscriptionManager
             = std::make_unique<UDataPacketService::SubscriptionManager>
@@ -300,7 +301,7 @@ public:
     std::unique_ptr<UDataPacketService::Subscriber> mSubscriber{nullptr};
     std::shared_ptr<UDataPacketService::SubscriptionManager>
         mSubscriptionManager{nullptr};
-    std::unique_ptr<UDataPacketService::Service> mService{nullptr};
+    std::unique_ptr<UDataPacketService::Server> mService{nullptr};
     std::vector<std::future<void>> mFutures;
     oneapi::tbb::concurrent_bounded_queue<UDataPacketServiceAPI::V1::Packet>
         mImportQueue;
