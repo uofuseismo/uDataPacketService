@@ -33,6 +33,11 @@ std::atomic<bool> mInterrupted{false};
 
 opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
     totalPacketsReceivedCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    totalPacketsSentCounter;
+opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
+    utilizationGauge;
+
 
 class Process
 {
@@ -73,11 +78,33 @@ public:
             totalPacketsReceivedCounter
                 = meter->CreateInt64ObservableCounter(
                     "seismic_data.import.grpc.client.packets.received",
-                    "Number of packets received from the GRPC import data packet proxy.",
+                    "Number of packets received from the gRPC import data packet proxy.",
                     "{packets}");
             totalPacketsReceivedCounter->AddCallback(
                 UMetrics::observeNumberOfPacketsReceived,
                 nullptr);
+
+            // Total packets sent
+            totalPacketsSentCounter
+                = meter->CreateInt64ObservableCounter(
+                    "seismic_data.import.grpc.server.packets.sent",
+                    "Number of packets sent from the gRPC seismic data packet service.",
+                    "{packets}");
+            totalPacketsSentCounter->AddCallback(
+                UMetrics::observeNumberOfPacketsSent,
+                nullptr);
+
+            // Utilization
+            utilizationGauge
+                = meter->CreateDoubleObservableGauge(
+                  "seismic_data.import.grpc.server.utilization",
+                  "Proportion of subscribers receiving packets from the service.",
+                  "");
+            utilizationGauge->AddCallback(
+                UMetrics::observeUtilization,
+                nullptr);
+
+
         }
     }
 

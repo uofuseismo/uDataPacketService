@@ -89,21 +89,40 @@ public:
     }   
     void incrementReceivedPacketsCounter() noexcept
     {   
-        mReceivedPacketsCounter.fetch_add(1);
+        mReceivedPacketsCounter.fetch_add(1, std::memory_order_relaxed);
     }   
     [[nodiscard]] int64_t getReceivedPacketsCount() const noexcept
     {   
         return mReceivedPacketsCounter.load();
     }   
+    void incrementSentPacketsCounter() noexcept
+    {
+        mSentPacketsCounter.fetch_add(1, std::memory_order_relaxed);
+    }
+    [[nodiscard]] int64_t getSentPacketsCount() const noexcept
+    {
+        return mSentPacketsCounter.load();
+    }
+    void updateUtilization(double utilization)
+    {
+        mUtilization.store(std::min(std::max(0.0, utilization), 1.0));
+    }
+    [[nodiscard]] double getUtilization() const noexcept
+    {
+        return mUtilization.load();
+    }                      
     void resetCounters()
     {   
         mReceivedPacketsCounter.store(0);
-        //mSentPacketsCounter.store(0);
+        mSentPacketsCounter.store(0);
+        mUtilization.store(0);
     }   
 private:
     MetricsSingleton() = default;
     ~MetricsSingleton() = default;
+    std::atomic<double> mUtilization{0};
     std::atomic<int64_t> mReceivedPacketsCounter{0};
+    std::atomic<int64_t> mSentPacketsCounter{0};
 };
 
 export void initializeMetricsSingleton()
@@ -143,5 +162,70 @@ export void observeNumberOfPacketsReceived(
         }
     }
 }
+
+export void observeNumberOfPacketsSent(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <   
+            opentelemetry::nostd::shared_ptr
+            <   
+                opentelemetry::metrics::ObserverResultT<int64_t>
+            >   
+        > (observerResult))
+    {   
+        auto observer = opentelemetry::nostd::get
+        <   
+            opentelemetry::nostd::shared_ptr
+            <   
+               opentelemetry::metrics::ObserverResultT<int64_t>
+            >   
+        > (observerResult);
+        try 
+        {   
+            auto &instance = MetricsSingleton::getInstance();
+            auto value = instance.getSentPacketsCount();
+            observer->Observe(value);
+        }   
+        catch (const std::exception &e) 
+        {   
+
+        }   
+    }   
+}
+
+export void observeUtilization(
+    opentelemetry::metrics::ObserverResult observerResult,
+    void *)
+{
+    if (opentelemetry::nostd::holds_alternative
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+                opentelemetry::metrics::ObserverResultT<int64_t>
+            >
+        > (observerResult))
+    {   
+        auto observer = opentelemetry::nostd::get
+        <
+            opentelemetry::nostd::shared_ptr
+            <
+               opentelemetry::metrics::ObserverResultT<int64_t>
+            >
+        > (observerResult);
+        try
+        {
+            auto &instance = MetricsSingleton::getInstance();
+            auto value = instance.getUtilization();
+            observer->Observe(value);
+        }
+        catch (const std::exception &e) 
+        {
+
+        }
+    }   
+}
+
 
 }

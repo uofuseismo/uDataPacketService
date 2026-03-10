@@ -20,6 +20,7 @@ module;
 
 export module AsyncWriter;
 import Utilities;
+import Metrics;
 
 namespace UDataPacketService
 {
@@ -158,7 +159,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
             auto utilization
                 = static_cast<double> (nSubscribers)
                  /std::max(1, maximumNumberOfSubscribers);
-//            mMetrics.updateSubscriberUtilization(utilization);
+            mMetrics.updateUtilization(utilization);
             SPDLOG_LOGGER_INFO(mLogger,
                           "Now managing {} subscribers.  Resource {} pct utilized.",
                           nSubscribers, utilization*100.0);
@@ -255,6 +256,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
             {
                 const auto &packet = mPacketsQueue.front();
                 mWriteInProgress = true;
+                mMetrics.incrementSentPacketsCounter();
                 StartWrite(&packet);
                 return;
             }
@@ -341,6 +343,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
     > mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
+    UDataPacketService::Metrics::MetricsSingleton &mMetrics
+    {   
+        UDataPacketService::Metrics::MetricsSingleton::getInstance()
+    };  
     std::string mPeer;
     size_t mMaximumQueueSize{2048};
     std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;
@@ -439,7 +445,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
             auto utilization
                 = static_cast<double> (nSubscribers)
                  /std::max(1, maximumNumberOfSubscribers);
-//            mMetrics.updateSubscriberUtilization(utilization);
+            mMetrics.updateUtilization(utilization);
             SPDLOG_LOGGER_INFO(mLogger,
                           "Now managing {} subscribers.  Resource {} pct utilized.",
                           nSubscribers, utilization*100.0);
@@ -535,6 +541,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
             {
                 const auto &packet = mPacketsQueue.front();
                 mWriteInProgress = true;
+                mMetrics.incrementSentPacketsCounter();
                 StartWrite(&packet);
                 return;
             }
@@ -620,6 +627,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
     > mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
+    UDataPacketService::Metrics::MetricsSingleton &mMetrics
+    {   
+        UDataPacketService::Metrics::MetricsSingleton::getInstance()
+    };  
     std::string mPeer;
     size_t mMaximumQueueSize{2048};
     std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;

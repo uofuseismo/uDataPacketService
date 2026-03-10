@@ -258,8 +258,113 @@ std::vector<UDataPacketServiceAPI::V1::Packet> generate3CPackets(
     return packets;
 }
 
+TEST_CASE("UDataPacketServer", "[SubscribeToAllSecure]")
+{
+    UDataPacketService::Metrics::initializeMetricsSingleton();
 
-TEST_CASE("UDataPacketServer", "[SubscribeToAll]")
+    bool useCerts{true};
+    bool useAPIKey{true};
+    bool useClientCert{false};
+    GRPCServerOptions grpcServerOptions;
+    grpcServerOptions.setHost(GRPC_SERVER_HOST);
+    grpcServerOptions.setPort(GRPC_PORT);
+    if (useCerts)
+    {
+        grpcServerOptions.setServerCertificate(serverCertificate);
+        grpcServerOptions.setServerKey(serverPrivateKey);
+        if (useAPIKey){grpcServerOptions.setAccessToken(apiKey);}
+    }
+    if (useClientCert)
+    {
+        grpcServerOptions.setClientCertificate(clientCertificate);
+    }
+
+    ServerOptions serverOptions;
+    serverOptions.setMaximumNumberOfSubscribers(16);
+    serverOptions.setGRPCOptions(grpcServerOptions);
+
+    referencePackets = ::generate3CPackets();
+    for (const auto &p : referencePackets)
+    {
+        if (p.stream_identifier().channel() != "HHZ")
+        {
+            subReferencePackets.push_back(p);
+        }
+    }
+    
+
+    auto logger = spdlog::stdout_color_mt("consoleSubToAll");
+    auto server = std::make_unique<Server> (serverOptions, logger);
+    auto serverThread = std::thread(&Server::start, &*server);
+    auto clientSubAllThread = std::thread(&subscribeToAll,
+                                          useCerts, useAPIKey);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+    for (const auto &packet : referencePackets)
+    {
+        server->enqueuePacket(packet);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+    server->stop();
+    if (serverThread.joinable()){serverThread.join();}
+    if (clientSubAllThread.joinable()){clientSubAllThread.join();}
+}
+
+TEST_CASE("UDataPacketServer", "[SubscribeToSomeSecured]")
+{
+    UDataPacketService::Metrics::initializeMetricsSingleton();
+
+    bool useCerts{true};
+    bool useAPIKey{true};
+    bool useClientCert{false};
+    GRPCServerOptions grpcServerOptions;
+    grpcServerOptions.setHost(GRPC_SERVER_HOST);
+    grpcServerOptions.setPort(GRPC_PORT);
+    if (useCerts)
+    {
+        grpcServerOptions.setServerCertificate(serverCertificate);
+        grpcServerOptions.setServerKey(serverPrivateKey);
+        if (useAPIKey){grpcServerOptions.setAccessToken(apiKey);}
+    }
+    if (useClientCert)
+    {
+        grpcServerOptions.setClientCertificate(clientCertificate);
+    }
+
+    ServerOptions serverOptions;
+    serverOptions.setMaximumNumberOfSubscribers(16);
+    serverOptions.setGRPCOptions(grpcServerOptions);
+
+    referencePackets = ::generate3CPackets();
+    for (const auto &p : referencePackets)
+    {
+        if (p.stream_identifier().channel() != "HHZ")
+        {
+            subReferencePackets.push_back(p);
+        }
+    }
+    
+
+    auto logger = spdlog::stdout_color_mt("consoleSubToSomeSecured");
+    auto server = std::make_unique<Server> (serverOptions, logger);
+    auto serverThread = std::thread(&Server::start, &*server);
+    auto clientSubSomeThread = std::thread(&subscribeToSome,
+                                           useCerts, useAPIKey);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+    for (const auto &packet : referencePackets)
+    {
+        server->enqueuePacket(packet);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds {1000});
+    server->stop();
+    if (serverThread.joinable()){serverThread.join();}
+    if (clientSubSomeThread.joinable()){clientSubSomeThread.join();}
+}
+
+TEST_CASE("UDataPacketServer", "[SubscribeToAllAndSome]")
 {
     UDataPacketService::Metrics::initializeMetricsSingleton();
 
@@ -294,7 +399,7 @@ TEST_CASE("UDataPacketServer", "[SubscribeToAll]")
     }
     
 
-    auto logger = spdlog::stdout_color_mt("console");
+    auto logger = spdlog::stdout_color_mt("consoleSubToSomeAndAll");
     auto server = std::make_unique<Server> (serverOptions, logger);
     auto serverThread = std::thread(&Server::start, &*server);
     auto clientSubAllThread = std::thread(&subscribeToAll,
