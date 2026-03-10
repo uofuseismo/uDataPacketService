@@ -297,6 +297,7 @@ public:
         getPackets(uintptr_t contextAddress) const
     {
         std::vector<UDataPacketServiceAPI::V1::Packet> result;
+        result.reserve(16);
         // Look through my active subscriptions
         for (const auto &activeSubscription : mActiveSubscriptionsMap)
         {
@@ -339,32 +340,73 @@ public:
     {
         bool wasUnsubscribed{false};
         // Pop from the pending fine-grained requests
+        {
+        std::lock_guard<std::mutex> lock(mMutex);
         size_t erased = mPendingSubscriptionRequests.unsafe_erase(contextAddress);
         if (erased == 1){wasUnsubscribed = true;}
         // Pop from the pending subscribe to all requests
         erased = mPendingSubscribeToAllRequests.unsafe_erase(contextAddress);
         if (erased == 1){wasUnsubscribed = true;}
+        }
         // Pop from the active subscriptions 
         bool purgedFromActiveSubscriptions{false};
         for (auto &stream : mStreamsMap)
         {
             try
             {
-                if (!stream.second->unsubscribe(contextAddress))
-                {
-                    SPDLOG_LOGGER_WARN(mLogger,
-                                       "Did not unsubscribe {} from {}",
-                                       std::to_string(contextAddress),
-                                       stream.first);
-                }
-                else
+                auto unsubscribeResponse
+                    = stream.second->unsubscribe(contextAddress);
+                if (unsubscribeResponse ==
+                    Stream::UnsubscribeResponse::Unsubscribed)
                 {
                     wasUnsubscribed = true;
                     if (!purgedFromActiveSubscriptions)
-                    {
+                    {   
+                        {
+                        std::lock_guard<std::mutex> lock(mMutex);
                         mActiveSubscriptionsMap.unsafe_erase(contextAddress);
+                        }
+                        purgedFromActiveSubscriptions = true; 
+                    }   
+                }
+                else if (unsubscribeResponse ==
+                         Stream::UnsubscribeResponse::NeverSubscribed)
+                {
+                    // The lock-guard above ensures we this context was purged
+                    // from the pending subscriptions.  So that this was never
+                    // subscribed is okay.
+                    if (mActiveSubscriptionsMap.contains(contextAddress))
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                          "{}'s subscription to {} noted as actived but {} not subscribed to stream", 
+                            std::to_string(contextAddress),
+                            stream.first,
+                            std::to_string(contextAddress)
+                            );
+                        {
+                        std::lock_guard<std::mutex> lock(mMutex);
+                        mActiveSubscriptionsMap.unsafe_erase(contextAddress);
+                        }
                         purgedFromActiveSubscriptions = true; 
                     }
+#ifndef NDEBUG
+                    SPDLOG_LOGGER_DEBUG(mLogger,
+                                        "{} was never subscribed to {}",
+                                        std::to_string(contextAddress),
+                                        stream.first);
+#endif
+                }
+                else if (unsubscribeResponse ==
+                         Stream::UnsubscribeResponse::NotUnsubscribed)
+                {
+                    SPDLOG_LOGGER_WARN(mLogger,
+                                       "Did not unsubscribe {} from {}",
+                                        std::to_string(contextAddress),
+                                        stream.first);
+                }
+                else
+                {
+                    SPDLOG_LOGGER_ERROR(mLogger, "Unhandled case");
                 }
             }
             catch (const std::exception &e)
@@ -452,17 +494,21 @@ public:
         mNumberOfSubscribers =-1;
         mPendingSubscriptionRequests.clear();
         mPendingSubscribeToAllRequests.clear();
-        }
         // Purge the active subscriptions 
         for (auto &stream : mStreamsMap)
         {
              stream.second->unsubscribeAll();
         }
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds {10});
         // Check
-        if (getNumberOfSubscribers() != 0)
+        auto newNumberOfSubscribers = getNumberOfSubscribers();
+        if (newNumberOfSubscribers != 0)
         {
-            SPDLOG_LOGGER_WARN(mLogger, "May not have purged all subscribers");
+            SPDLOG_LOGGER_WARN(
+               mLogger,
+                "May not have purged all subscribers.  {} still remain.",
+               newNumberOfSubscribers);
         }
     }
 

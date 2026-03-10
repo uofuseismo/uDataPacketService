@@ -172,9 +172,11 @@ TEST_CASE("UDataPacketService", "[stream]")
         REQUIRE(subscribers.contains(subscriberID1));
         REQUIRE(subscribers.contains(subscriberID2));
 
-        REQUIRE(stream.unsubscribe(subscriberID1));
+        REQUIRE(stream.unsubscribe(subscriberID1) ==
+                Stream::UnsubscribeResponse::Unsubscribed);
         REQUIRE(stream.getNumberOfSubscribers() == 1);
-        REQUIRE(stream.unsubscribe(subscriberID2));
+        REQUIRE(stream.unsubscribe(subscriberID2) ==
+                Stream::UnsubscribeResponse::Unsubscribed);
         REQUIRE(stream.getNumberOfSubscribers() == 0);
 
         REQUIRE(inputPackets.size() == packetsBack1.size());

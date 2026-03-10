@@ -23,6 +23,13 @@ namespace UDataPacketService
 class Stream
 {
 public:
+    enum class UnsubscribeResponse
+    {
+        Unsubscribed = 0,    /*!< Successfully unsubscribed. */
+        NeverSubscribed = 1, /*!< Can't unsubscribe because context wasn't subscribed to start with. */
+        NotUnsubscribed = 2  /*!< This indicates failure. */
+    };
+public:
     /// @name Publisher
     /// @{
 
@@ -71,9 +78,7 @@ public:
 
     /// @brief Unsubscribes from the stream.
     /// @param[in] contextAddress  The identifier to unsubscribe.
-    /// @result True indicates the context was subscribed and is not
-    ///         unsubscribed.
-    [[nodiscard]] bool unsubscribe(uintptr_t contextAddress);
+    [[nodiscard]] UnsubscribeResponse unsubscribe(uintptr_t contextAddress);
 
     /// @result The stream identifier.
     [[nodiscard]] std::string getIdentifier() const noexcept;

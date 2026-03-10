@@ -37,11 +37,6 @@ public:
     ~ServerImpl() override
     {   
         stop();
-        std::this_thread::sleep_for(std::chrono::milliseconds {15});
-        if (mServer)
-        {
-            mServer->Shutdown();
-        }
     }   
 
     void start()
@@ -77,22 +72,31 @@ public:
 
         SPDLOG_LOGGER_INFO(mLogger, "Server listening at {}", address);
         mServer = builder.BuildAndStart();
+        mServerStarted = true;
     }
 
     /// Stop the service
     void stop()
     {   
+        // RPCs should see this and issue shutdown
         mKeepRunning.store(false);
-        // Give RPCs a chance to give up
         std::this_thread::sleep_for(std::chrono::milliseconds {15});
+        // Forceably purge the remaning subscriptions
         mSubscriptionManager->unsubscribeAll();
+        std::this_thread::sleep_for(std::chrono::milliseconds {15});
+        // Kill the server
+        if (mServer && mServerStarted)
+        {
+            mServer->Shutdown();
+            mServerStarted = false;
+        }
     }
 
     /// Subscribes to specific streams
     grpc::ServerWriteReactor<UDataPacketServiceAPI::V1::Packet> *
         Subscribe(grpc::CallbackServerContext* context,
                   const UDataPacketServiceAPI::V1::SubscriptionRequest *request) override
-    {   
+    {
         return new
             UDataPacketService::Subscribe(context,
                                           request,
@@ -107,8 +111,8 @@ public:
     grpc::ServerWriteReactor<UDataPacketServiceAPI::V1::Packet> *
         SubscribeToAll(grpc::CallbackServerContext* context,
                        const UDataPacketServiceAPI::V1::SubscribeToAllRequest *request) override
-    {   
-        return new 
+    {
+        return new
             UDataPacketService::SubscribeToAll(context,
                                                request,
                                                mOptions,
@@ -138,6 +142,7 @@ public:
     std::unique_ptr<grpc::Server> mServer{nullptr};
     std::atomic<bool> mKeepRunning{true};
     bool mSecureConnection{false};  
+    bool mServerStarted{false};
 };
 
 /// Constructor
@@ -163,6 +168,12 @@ void Server::stop()
 void Server::enqueuePacket(UDataPacketServiceAPI::V1::Packet &&packet)
 {
     pImpl->enqueuePacket(std::move(packet));
+}
+
+void Server::enqueuePacket(const UDataPacketServiceAPI::V1::Packet &packet)
+{
+    auto copy = packet;
+    pImpl->enqueuePacket(std::move(copy));
 }
 
 /// Number of subscribers

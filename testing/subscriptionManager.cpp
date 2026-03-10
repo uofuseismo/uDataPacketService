@@ -89,8 +89,6 @@ TEST_CASE("UDataPacketServer", "[SubscriptionManager]")
         subscriptionManager.subscribe(subscriberID2, streamIdentifiers);
         REQUIRE(subscriptionManager.getNumberOfSubscribers() == 2);
         
-       
-
         // Create a publisher
         constexpr int nPacketsPerChannel{5};
         auto p1 = ::generatePackets(nPacketsPerChannel, network,
@@ -125,6 +123,8 @@ TEST_CASE("UDataPacketServer", "[SubscriptionManager]")
                 iPacket = iPacket + 1;
             }
             auto nextPackets = subscriptionManager.getPackets(subscriberID1);
+            REQUIRE(::comparePackets(nextPackets, sentPackets, true));
+            /*
             REQUIRE(nextPackets.size() == sentPackets.size());
             //std::cout << nSent << " " << nextPacket.size() << std::endl;
             for (int i = 0; i < static_cast<int> (sentPackets.size()); ++i)
@@ -143,8 +143,11 @@ TEST_CASE("UDataPacketServer", "[SubscriptionManager]")
                 }
                 REQUIRE(foundIt);
             }
+            */
 
             nextPackets = subscriptionManager.getPackets(subscriberID2);
+            REQUIRE(::comparePackets(nextPackets, selectedPackets, true));
+/*
             REQUIRE(nextPackets.size() == selectedPackets.size());
             for (int i = 0; i < static_cast<int> (selectedPackets.size()); ++i)
             {
@@ -162,11 +165,12 @@ TEST_CASE("UDataPacketServer", "[SubscriptionManager]")
                 }
                 REQUIRE(foundIt);
             }
+*/
         }
 
-        subscriptionManager.unsubscribeFromAll(subscriberID2);
-        REQUIRE(subscriptionManager.getNumberOfSubscribers() == 1);
         subscriptionManager.unsubscribeFromAll(subscriberID1);
+        REQUIRE(subscriptionManager.getNumberOfSubscribers() == 1);
+        subscriptionManager.unsubscribeFromAll(subscriberID2);
         REQUIRE(subscriptionManager.getNumberOfSubscribers() == 0);
     }
 

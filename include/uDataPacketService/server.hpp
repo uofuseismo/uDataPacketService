@@ -32,6 +32,8 @@ public:
 
     /// @brief Allows a data source to publish a packet.
     void enqueuePacket(UDataPacketServiceAPI::V1::Packet &&packet); 
+    /// @brief Allows a data source to publish a packet.
+    void enqueuePacket(const UDataPacketServiceAPI::V1::Packet &packet);
 
     /// @brief Destructor
     ~Server();

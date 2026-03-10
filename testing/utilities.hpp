@@ -143,6 +143,81 @@ std::vector<UDataPacketServiceAPI::V1::Packet>
     return result;
 }
 
+[[nodiscard]] [[maybe_unused]]
+bool comparePacket(const UDataPacketServiceAPI::V1::Packet &lhs,
+                   const UDataPacketServiceAPI::V1::Packet &rhs)
+{
+    if (lhs.number_of_samples() != rhs.number_of_samples())
+    {
+        return false;
+    }
+    if (lhs.stream_identifier().network() !=
+        rhs.stream_identifier().network())
+    {
+        return false;
+    }
+    if (lhs.stream_identifier().station() !=
+        rhs.stream_identifier().station())
+    {
+        return false;
+    }
+    if (lhs.stream_identifier().channel() !=
+        rhs.stream_identifier().channel())
+    {
+        return false;
+    }
+    if (lhs.stream_identifier().location_code() !=
+        rhs.stream_identifier().location_code())
+    {
+        return false;
+    }
+    if (std::abs(lhs.sampling_rate() - rhs.sampling_rate()) >
+        1.e-14)
+    {
+        return false;
+    }
+    if (lhs.start_time() != rhs.start_time())
+    {
+        return false;
+    }
+    if (lhs.data_type() != rhs.data_type()){return false;}
+    if (lhs.data() != rhs.data()){return false;}
+    return true;
+}
+
+[[nodiscard]] [[maybe_unused]]
+bool comparePackets(const std::vector<UDataPacketServiceAPI::V1::Packet> &lhs,
+                    const std::vector<UDataPacketServiceAPI::V1::Packet> &rhs,
+                    bool ordered = true)
+{
+    if (lhs.size() != rhs.size()){return true;}
+    auto nPackets = static_cast<int> (lhs.size());
+    for (int i = 0; i < nPackets; ++i)
+    {
+        if (ordered)
+        {
+            bool matched{false};
+            for (int j = 0; j < nPackets; ++j)
+            {
+                if (comparePacket(lhs.at(i), rhs.at(j)))
+                {
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched){return false;}
+        }
+        else
+        {
+            if (!comparePacket(lhs.at(i), rhs.at(i)))
+            {
+                return false;
+            }
+        }
+    }   
+    return true;
+}
+
 
 }
 #endif

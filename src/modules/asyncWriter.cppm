@@ -175,6 +175,27 @@ Subscriber must provide access token in x-custom-auth-token header field.
         nextWrite();
     }
 
+    void OnWriteDone(bool ok) override
+    {
+        if (!ok)
+        {
+            if (mContext)
+            {
+                if (mContext->IsCancelled())
+                {
+                    return Finish(grpc::Status::CANCELLED);
+                }   
+            }
+            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                       "Unexpected failure"));
+        }
+        // Packet is flushed; can now safely purge the element to write
+        mWriteInProgress = false;
+        mPacketsQueue.pop();
+        // Start next write
+        nextWrite();
+    }
+
     // This needs to perform quickly.  I should do blocking work but
     // this is my last ditch effort to evict the context from the 
     // subscription manager..
@@ -433,8 +454,28 @@ Subscriber must provide access token in x-custom-auth-token header field.
         }
         // Start
         nextWrite();
-
     }   
+
+    void OnWriteDone(bool ok) override
+    {
+        if (!ok)
+        {
+            if (mContext)
+            {
+                if (mContext->IsCancelled())
+                {
+                    return Finish(grpc::Status::CANCELLED);
+                }   
+            }
+            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                       "Unexpected failure"));
+        }
+        // Packet is flushed; can now safely purge the element to write
+        mWriteInProgress = false;
+        mPacketsQueue.pop();
+        // Start next write
+        nextWrite();
+    }
 
     // This needs to perform quickly.  I should do blocking work but
     // this is my last ditch effort to evict the context from the 
@@ -582,7 +623,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
     std::string mPeer;
     size_t mMaximumQueueSize{2048};
     std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;
-    std::chrono::milliseconds mTimeOut{20};
+    std::chrono::milliseconds mTimeOut{10};
     bool mSubscribed{false};
     bool mWriteInProgress{false};
     bool mCheckPackets{false};

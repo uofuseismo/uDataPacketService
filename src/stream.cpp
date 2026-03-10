@@ -140,20 +140,30 @@ public:
     }
 
     /// Unsubscribes from the stream.
-    /// @result True indicates the context was subscribed and is not
-    ///         unsubscribed.
-    [[nodiscard]] bool unsubscribe(const uintptr_t contextAddress)
+    /// @result True indicates the context was subscribed.
+    ///         False indicates the context failed to be unsubscribed.
+    [[nodiscard]]
+    Stream::UnsubscribeResponse unsubscribe(const uintptr_t contextAddress)
     {
+        auto result = Stream::UnsubscribeResponse::Unsubscribed;
         // Erase is not thread safe
         size_t originalSize{0};
         size_t newSize{0};
-        bool wasUnsubscribed = false;
+        bool wasUnsubscribed{false};
         {
         std::lock_guard<std::mutex> lock(mMutex);
         originalSize = mSubscribersMap.size();
         size_t exists = mSubscribersMap.unsafe_erase(contextAddress);
         newSize = mSubscribersMap.size();
-        if (exists == 1){wasUnsubscribed = true;}
+        if (exists == 1)
+        {
+            wasUnsubscribed = true;
+            result = Stream::UnsubscribeResponse::Unsubscribed;
+        }
+        else if (exists == 0)
+        {
+            result = Stream::UnsubscribeResponse::NeverSubscribed;
+        }
         }
         if (wasUnsubscribed)
         {
@@ -187,14 +197,16 @@ public:
             }
 #endif
         }
-        return wasUnsubscribed;
+        return result;
     }
 
     /// Forcefully purge all subscribers
     void unsubscribeAll()
     {
+        {
         std::lock_guard<std::mutex> lock(mMutex);        
         mSubscribersMap.clear();
+        }
     }
 
     /// Sets the next packet
@@ -283,7 +295,7 @@ bool Stream::subscribe(const uintptr_t contextAddress,
     return pImpl->subscribe(contextAddress, enqueueLatestPacket);
 }
 
-bool Stream::unsubscribe(const uintptr_t contextAddress)
+Stream::UnsubscribeResponse Stream::unsubscribe(const uintptr_t contextAddress)
 {
     return pImpl->unsubscribe(contextAddress);
 }
