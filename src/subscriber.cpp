@@ -161,6 +161,8 @@ public:
         SPDLOG_LOGGER_DEBUG(mLogger, "In destructor");
     }
 #endif
+
+    AsyncPacketSubscriber() = delete;
 private:
     grpc::ClientContext mClientContext;
     UDataPacketImportAPI::V1::SubscriptionRequest mRequest;

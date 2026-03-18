@@ -163,7 +163,7 @@ public:
         if (ok)
         {   
 #ifndef NDEBUG
-            assert(mReceivedPackets);
+            assert(mReceivedPackets != nullptr);
 #endif
             //std::cout << "yar" << std::endl;
             mReceivedPackets->push_back(mPacket);
