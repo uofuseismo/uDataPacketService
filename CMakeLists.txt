@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uDataPacketService VERSION 0.0.3 LANGUAGES CXX)
+project(uDataPacketService VERSION 0.0.4 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
@@ -236,7 +236,7 @@ if (${BUILD_CONTAINER})
    if (buildah_EXECUTABLE)
       add_custom_target(buildah
                         COMMENT "Preparing the container with buildah"
-                        COMMAND ${buildah_EXECUTABLE} bud -t udatapacketimportproxy:${PROJECT_VERSION} -t udatapacketimportproxy:latest -f ./Dockerfile.u24
+                        COMMAND ${buildah_EXECUTABLE} bud -t udatapacketservice:${PROJECT_VERSION} -t udatapacketservice:latest -f ./Dockerfile.u24
                         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
       add_dependencies(buildah ${PROJECT_NAME}-u24)
    endif()

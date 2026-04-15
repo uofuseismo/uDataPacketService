@@ -126,23 +126,36 @@ public:
             if (!mKeepRunning->load())
             {
                 //Finish(grpc::Status::OK);
-                mClientContext.TryCancel();
+                if (!mTryCancel.load())
+                {
+                    SPDLOG_LOGGER_DEBUG(mLogger, "Cancelling");
+                    mTryCancel.store(true);
+                    mClientContext.TryCancel();
+                }
             }
-            StartRead(&mPacket);
+            else
+            {
+                StartRead(&mPacket);
+            }
         }
         else
         {
             if (!mKeepRunning->load())
             {
                 //Finish(grpc::Status::OK);
-                mClientContext.TryCancel();
+                if (!mTryCancel.load())
+                {
+                    SPDLOG_LOGGER_DEBUG(mLogger, "Cancelling");
+                    mTryCancel.store(true);
+                    mClientContext.TryCancel();
+                }
             }
         } 
     }
 
     void OnDone(const grpc::Status &status) override
     {
-        std::unique_lock<std::mutex> lock(mMutex);
+        const std::unique_lock<std::mutex> lock(mMutex);
         mStatus = status; 
         mDone = true;
         mConditionVariable.notify_one();
@@ -150,8 +163,28 @@ public:
 
     [[nodiscard]] std::pair<grpc::Status, bool> await()
     {
-        std::unique_lock<std::mutex> lock(mMutex);
-        mConditionVariable.wait(lock, [this] {return mDone;});
+        while (!mDone)
+        {
+            if (!mKeepRunning->load())
+            {
+                if (!mTryCancel.load())
+                {
+                    SPDLOG_LOGGER_DEBUG(mLogger, "Cancelling");
+                    mTryCancel.store(true);
+                    mClientContext.TryCancel();
+                }
+            }
+            constexpr std::chrono::milliseconds timeOut{250};
+            std::unique_lock<std::mutex> lock(mMutex);
+            //mConditionVariable.wait(lock, [this] {return mDone;});
+            mConditionVariable.wait_for(lock, timeOut,
+                                        [this]
+                                        {
+                                            return mDone;
+                                        });
+        }
+        //std::unique_lock<std::mutex> lock(mMutex);
+        //mConditionVariable.wait(lock, [this] {return mDone;});
         return std::pair{std::move(mStatus), mHadSuccessfulRead};
     }
 
@@ -163,6 +196,10 @@ public:
 #endif
 
     AsyncPacketSubscriber() = delete;
+    AsyncPacketSubscriber(const AsyncPacketSubscriber &) = delete;
+    AsyncPacketSubscriber(AsyncPacketSubscriber &&) noexcept = delete;
+    AsyncPacketSubscriber& operator=(const AsyncPacketSubscriber &) = delete;
+    AsyncPacketSubscriber& operator=(AsyncPacketSubscriber &&) noexcept = delete;
 private:
     grpc::ClientContext mClientContext;
     UDataPacketImportAPI::V1::SubscriptionRequest mRequest;
@@ -177,6 +214,7 @@ private:
     grpc::Status mStatus{grpc::Status::OK};
     bool mDone{false};
     std::atomic<bool> *mKeepRunning{nullptr};
+    std::atomic<bool> mTryCancel{false};
     bool mHadSuccessfulRead{false}; 
 };
 

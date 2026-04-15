@@ -63,7 +63,8 @@ public:
         }
 #ifndef NDEBUG
         assert(stream != nullptr);
-#endif 
+#endif
+        SPDLOG_LOGGER_DEBUG(mLogger, "Adding {}", streamIdentifier);
         std::pair
         <
             std::string,

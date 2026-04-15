@@ -146,9 +146,19 @@ Subscriber must provide access token in x-custom-auth-token header field.
                 }
                 if (!existingIdentifiers.contains(name))
                 {
+                    SPDLOG_LOGGER_INFO(mLogger, "{} will subscribe to {}",
+                                       mPeer, name);
                     streamSelections.push_back(selector);
                     existingIdentifiers.insert(name);
                 }
+            }
+            // No streams after all this?
+            if (streamSelections.empty())
+            {
+                SPDLOG_LOGGER_WARN(mLogger, "Could not create streams");
+                grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+                       "No streams created.  Verify your stream selections."};
+                Finish(status);
             }
             SPDLOG_LOGGER_INFO(mLogger,
                                "Subscribing {} to {} streams",
@@ -173,6 +183,8 @@ Subscriber must provide access token in x-custom-auth-token header field.
                                 "Failed to subscribe"));
         }
         // Start
+        SPDLOG_LOGGER_DEBUG(mLogger, "Subscribe RPC for {} is starting",
+                            mPeer);
         nextWrite();
     }
 
@@ -202,14 +214,11 @@ Subscriber must provide access token in x-custom-auth-token header field.
     // subscription manager..
     void OnDone() override
     {
-        if (mContext)
-        {   
-            if (!mSubscribed)
-            {   
-                mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-                mSubscribed = false;
-            }   
-        }   
+        if (mSubscribed)
+        {
+            mSubscriptionManager->unsubscribeFromAll(mContextAddress);
+            mSubscribed = false;
+        }
         auto maximumNumberOfSubscribers
             = mOptions.getMaximumNumberOfSubscribers();
         auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
@@ -488,13 +497,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
     // subscription manager..
     void OnDone() override
     {
-        if (mContext)
+        if (mSubscribed)
         {
-            if (!mSubscribed)
-            {
-                mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-                mSubscribed = false;
-            }
+            mSubscriptionManager->unsubscribeFromAll(mContextAddress);
+            mSubscribed = false;
         }
         auto maximumNumberOfSubscribers
             = mOptions.getMaximumNumberOfSubscribers();

@@ -88,7 +88,7 @@ void GRPCClientOptions::setPort(const uint16_t port)
 {
     if (port < 1)
     {
-        throw std::invalid_argument("port must be positive");
+        throw std::invalid_argument("Port must be positive");
     }
     pImpl->mPort = port;
 }
