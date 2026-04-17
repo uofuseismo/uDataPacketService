@@ -2,7 +2,7 @@
 
 using namespace UDataPacketService;
 
-#define DEFAULT_QUEUE_SIZE 8
+#define DEFAULT_QUEUE_SIZE 128
 
 class StreamOptions::StreamOptionsImpl
 {

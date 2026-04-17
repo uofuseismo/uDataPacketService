@@ -41,7 +41,7 @@ TEST_CASE("UDataPacketService", "[SubscriptionManagerOptions]")
     SECTION("Defaults")
     {
         SubscriptionManagerOptions options;
-        REQUIRE(options.getStreamOptions().getMaximumQueueSize() == 8);
+        REQUIRE(options.getStreamOptions().getMaximumQueueSize() == 128);
     }
 }
 
