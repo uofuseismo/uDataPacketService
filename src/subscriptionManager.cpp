@@ -14,6 +14,8 @@
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
+#include "uDataPacketServiceAPI/v1/data_type.pb.h"
 
 import Utilities;
 
@@ -576,14 +578,35 @@ void SubscriptionManager::enqueuePacket(
     {
         throw std::invalid_argument("Stream identifier not set");
     }
+    const auto &streamIdentifier = packet.stream_identifier();
+    if (!streamIdentifier.has_network())
+    {
+        throw std::invalid_argument("Network not set");
+    }
+    if (!streamIdentifier.has_station())
+    {
+        throw std::invalid_argument("Station not set");
+    }
+    if (!streamIdentifier.has_channel())
+    {
+        throw std::invalid_argument("Channel not set");
+    }
     if (!packet.has_number_of_samples())
     {
         throw std::invalid_argument("Number of samples not set");
+    }
+    if (packet.number_of_samples() < 1)
+    {
+        throw std::invalid_argument("No samples in packet");
     }
     if (packet.data_type() ==
         UDataPacketServiceAPI::V1::DataType::DATA_TYPE_UNKNOWN)
     {
         throw std::invalid_argument("Undefined data type");
+    }
+    if (!packet.has_sampling_rate())
+    {
+        throw std::invalid_argument("Sampling rate not set");
     }
     if (packet.sampling_rate() <= 0)
     {
@@ -592,6 +615,10 @@ void SubscriptionManager::enqueuePacket(
     if (!packet.has_data())
     {
         throw std::invalid_argument("Data not set");
+    }
+    if (packet.data().empty())
+    {
+        throw std::invalid_argument("No data");
     }
     pImpl->enqueuePacket(std::move(packet));
 }

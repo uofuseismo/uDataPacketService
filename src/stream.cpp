@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <queue>
 #include <cmath>
+#include <utility>
 #ifndef NDEBUG
 #include <cassert>
 #endif
@@ -55,6 +56,7 @@ public:
                                    + mStreamIdentifier);
         }
         // Set the next packets
+        {
         std::lock_guard<std::mutex> lock(mMutex);
         mMostRecentPacket = std::move(packet);
         mHaveMostRecentPacket = true;
@@ -64,8 +66,9 @@ public:
             {
                 it.second.pop(); 
             }
-            auto packetCopy = mMostRecentPacket;
-            it.second.push(packetCopy);
+            UDataPacketServiceAPI::V1::Packet packetCopy{mMostRecentPacket};
+            it.second.push(std::move(packetCopy));
+        }
         }
     }
 
