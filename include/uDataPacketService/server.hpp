@@ -1,5 +1,6 @@
 #ifndef UDATA_PACKET_SERVICE_SERVER_HPP
 #define UDATA_PACKET_SERVICE_SERVER_HPP
+#include <future>
 #include <memory>
 #include <spdlog/spdlog.h>
 namespace UDataPacketServiceAPI::V1
@@ -24,7 +25,7 @@ public:
     Server(const ServerOptions &options, std::shared_ptr<spdlog::logger> logger);
 
     /// @brief Starts the server.
-    void start();
+    std::future<void> start();
     /// @result The current number of subscribers.
     [[nodiscard]] int getNumberOfSubscribers() const noexcept;
     /// @brief Stops the server

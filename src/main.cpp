@@ -10,6 +10,7 @@ import PacketConverter;
 #include <filesystem>
 #include <atomic>
 #include <condition_variable>
+#include <map>
 #include <mutex>
 #ifndef NDEBUG
 #include <cassert>
@@ -26,6 +27,7 @@ import PacketConverter;
 #include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/subscriber.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
+#include "uDataPacketService/version.hpp"
 
 namespace
 {   
@@ -103,8 +105,6 @@ public:
             utilizationGauge->AddCallback(
                 UMetrics::observeUtilization,
                 nullptr);
-
-
         }
     }
 
@@ -117,15 +117,16 @@ public:
     {
         mKeepRunning.store(false);
         // Stop receiving packets
-        if (mSubscriber){mSubscriber->stop();}
+        if (mSubscriber != nullptr){mSubscriber->stop();}
         std::this_thread::sleep_for(std::chrono::milliseconds {25});
         // Stop sending packets
-        if (mService){mService->stop();}
+        if (mService != nullptr){mService->stop();}
+        std::this_thread::sleep_for(std::chrono::milliseconds {15});
         // Check my futures
-        for (auto &future : mFutures)
-        {   
-            if (future.valid()){future.get();}
-        }   
+        for (auto &futurePair : mFuturesMap)
+        {
+            if (futurePair.second.valid()){futurePair.second.get();}
+        }
     }
 
     void start()
@@ -136,9 +137,19 @@ public:
         assert(mService != nullptr);
 #endif
         mKeepRunning.store(true);
-        mFutures.push_back(std::async(&Process::propagateImportPackets, this));
-        mService->start();
-        mFutures.push_back(mSubscriber->start());
+        auto propagatorFuture
+            = std::async(&Process::propagateImportPackets, this);
+        mFuturesMap.insert(
+            std::pair {"PropagateImportPacketsFuture",
+                       std::move(propagatorFuture)});
+        auto serviceFuture = mService->start();
+        mFuturesMap.insert(
+            std::pair {"ServiceFuture",
+                       std::move(serviceFuture)});
+        auto subscriberFuture = mSubscriber->start();
+        mFuturesMap.insert(
+            std::pair {"PacketSubscriberFuture",
+                       std::move(subscriberFuture)});
         handleMainThread();
     }
 
@@ -242,20 +253,21 @@ public:
     bool checkFuturesOkay(const std::chrono::milliseconds &timeOut)
     {
         bool isOkay{true};
-        for (auto &future : mFutures)
+        for (auto &futurePair : mFuturesMap)
         {
             try
             {
-                auto status = future.wait_for(timeOut);
+                auto status = futurePair.second.wait_for(timeOut);
                 if (status == std::future_status::ready)
                 {
-                    future.get();
+                    futurePair.second.get();
                 }
             }
             catch (const std::exception &e)
             {
                 SPDLOG_LOGGER_CRITICAL(mLogger,
-                                       "Fatal error detected from thread: {}",
+                                       "Fatal error in {} : {}",
+                                       futurePair.first,
                                        std::string {e.what()});
                 isOkay = false;
             }
@@ -329,7 +341,7 @@ public:
     std::shared_ptr<UDataPacketService::SubscriptionManager>
         mSubscriptionManager{nullptr};
     std::unique_ptr<UDataPacketService::Server> mService{nullptr};
-    std::vector<std::future<void>> mFutures;
+    std::map<std::string, std::future<void>> mFuturesMap;
     oneapi::tbb::concurrent_bounded_queue<UDataPacketServiceAPI::V1::Packet>
         mImportQueue;
     std::function<void(UDataPacketImportAPI::V1::Packet &&)>
@@ -357,6 +369,13 @@ public:
 
 int main(int argc, char *argv[])
 {
+    // Some prelim stuff to get out of the way
+    //NOLINTNEXTLINE(misc-include-cleaner)
+    auto consoleLogger = spdlog::stdout_color_st("console");
+    SPDLOG_LOGGER_CRITICAL(consoleLogger,
+                         "Running version {} of uDataPacketService",
+                         UDataPacketService::Version::getVersionWithTag());
+    UDataPacketService::Metrics::initializeMetricsSingleton();
     // Get the ini file from the command line
     std::filesystem::path iniFile;
     try
@@ -368,7 +387,6 @@ int main(int argc, char *argv[])
     }
     catch (const std::exception &e) 
     {
-        auto consoleLogger = spdlog::stdout_color_st("console");
         SPDLOG_LOGGER_CRITICAL(consoleLogger,
                                "Failed getting command line options because {}",
                                std::string {e.what()});
@@ -399,8 +417,6 @@ int main(int argc, char *argv[])
 
     auto logger
         = UDataPacketService::Logger::initialize(programOptions);
-    // Initialize the metrics singleton
-    UDataPacketService::Metrics::initializeMetricsSingleton();
 
     try 
     {   

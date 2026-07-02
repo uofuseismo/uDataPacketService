@@ -2,6 +2,7 @@
 #include <thread>
 #include <chrono>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/time.h> //NOLINT
 #include <spdlog/spdlog.h>
 #include "uDataPacketService/server.hpp"
 #include "uDataPacketService/serverOptions.hpp"
@@ -72,6 +73,7 @@ public:
 
         SPDLOG_LOGGER_INFO(mLogger, "Server listening at {}", address);
         mServer = builder.BuildAndStart();
+        mServer->Wait();
         mServerStarted = true;
     }
 
@@ -85,11 +87,24 @@ public:
         mSubscriptionManager->unsubscribeAll();
         std::this_thread::sleep_for(std::chrono::milliseconds {15});
         // Kill the server
-        if (mServer && mServerStarted)
+        if (mServer)
         {
-            mServer->Shutdown();
-            mServerStarted = false;
+            if (mServerStarted) 
+            {
+                SPDLOG_LOGGER_INFO(mLogger, "Shutting down service");
+                constexpr int64_t timeOutSeconds{1};
+                constexpr int64_t timeOutNanoSeconds{0};
+                const gpr_timespec deadline // NOLINT
+                {
+                    timeOutSeconds,
+                    timeOutNanoSeconds,
+                    GPR_TIMESPAN // NOLINT
+                };
+                mServer->Shutdown(deadline);
+            }
+            mServer = nullptr;
         }
+        mServerStarted = false;
     }
 
     /// Subscribes to specific streams
@@ -153,9 +168,9 @@ Server::Server(const ServerOptions &options,
 }
 
 /// Start
-void Server::start()
+std::future<void> Server::start()
 {
-    pImpl->start();
+    return std::async(&ServerImpl::start, &*pImpl);
 }
 
 /// Stop

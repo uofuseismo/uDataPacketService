@@ -1,9 +1,11 @@
 module;
-#include <string>
-#include <queue>
-#include <vector>
-#include <set>
 #include <atomic>
+#include <exception>
+#include <queue>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <vector>
 #ifndef NDEBUG
 #include <cassert>
 #endif
@@ -16,11 +18,73 @@ module;
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketServiceAPI/v1/broadcast.grpc.pb.h"
+#include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
+#include "uDataPacketServiceAPI/v1/data_type.pb.h"
+
 
 
 export module AsyncWriter;
 import Utilities;
 import Metrics;
+
+namespace
+{
+#ifndef NDEBUG
+void checkPacket(const UDataPacketServiceAPI::V1::Packet &packet)
+{
+    if (!packet.has_stream_identifier())
+    {
+        throw std::invalid_argument("No stream identifier set");
+    }
+    const auto &identifier = packet.stream_identifier();
+    if (!identifier.has_network())
+    {
+        throw std::invalid_argument("Network not set");
+    }
+    if (!identifier.has_station())
+    {
+        throw std::invalid_argument("Station not set");
+    }
+    if (!identifier.has_channel())
+    {
+        throw std::invalid_argument("Channel not set");
+    }
+    if (!packet.has_start_time())
+    {
+        throw std::invalid_argument("No start time set");
+    }
+    if (!packet.has_sampling_rate())
+    {
+        throw std::invalid_argument("No sampling rate set");
+    }
+    if (packet.sampling_rate() <= 0)
+    {
+        throw std::invalid_argument("Sampling not positive");
+    }
+    if (!packet.has_number_of_samples())
+    {
+        throw std::invalid_argument("No samples set");
+    }
+    if (packet.number_of_samples() < 1)
+    { 
+        throw std::invalid_argument("No samples");
+    }
+    if (!packet.has_data_type())
+    {
+        throw std::invalid_argument("No data type set");
+    }
+    if (!packet.has_data())
+    {
+        throw std::invalid_argument("No data set");
+    } 
+    if (packet.data().empty())
+    {
+        throw std::invalid_argument("Data empty");
+    }
+}
+#endif
+}
 
 namespace UDataPacketService
 {
@@ -280,9 +344,21 @@ Subscriber must provide access token in x-custom-auth-token header field.
                     for (auto &packet : packetsBuffer)
                     {
                         bool allow{true};
+#ifndef NDEBUG
+                        try
+                        {
+                            checkPacket(packet);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            SPDLOG_LOGGER_WARN(mLogger,
+                               "Skipping invalid packet: ({})",
+                               std::string {e.what()});
+                            continue;
+                        }   
+#endif
                         if (mCheckPackets)
                         {
-
                         }
                         if (!allow){continue;}
                         if (mPacketsQueue.size() > mMaximumQueueSize)
@@ -562,6 +638,19 @@ Subscriber must provide access token in x-custom-auth-token header field.
                     for (auto &packet : packetsBuffer)
                     {
                         bool allow{true};
+#ifndef NDEBUG
+                        try
+                        {
+                            checkPacket(packet);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            SPDLOG_LOGGER_WARN(mLogger,
+                               "Skipping invalid packet: ({})",
+                               std::string {e.what()});
+                            continue;
+                        }
+#endif
                         if (mCheckPackets)
                         {
 

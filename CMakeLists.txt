@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uDataPacketService VERSION 0.0.4 LANGUAGES CXX)
+project(uDataPacketService VERSION 0.0.5 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
@@ -26,6 +26,25 @@ find_package(Threads REQUIRED)
 if (BUILD_TESTS)
    find_package(Catch2 3 REQUIRED)
 endif()
+
+find_package(Git)
+if (Git_FOUND)
+   execute_process(
+     COMMAND ${GIT_EXECUTABLE} --no-pager log -n 1 HEAD "--pretty=format:%h"
+     OUTPUT_VARIABLE uDataPacketService_GITTAG
+     RESULT_VARIABLE gitresult
+     ERROR_QUIET
+     OUTPUT_STRIP_TRAILING_WHITESPACE
+   )   
+   if (gitresult EQUAL 0)
+      message(STATUS "Last Git commit: ${uDataPacketService_GITTAG}")
+   endif()
+else()
+   set(uDataPacketService_GITTAG "") 
+endif()
+configure_file(${CMAKE_SOURCE_DIR}/src/version.hpp.in
+               ${CMAKE_SOURCE_DIR}/include/uDataPacketService/version.hpp)
+
 
 set(IMPORT_PROTO_SRC
     uDataPacketImportAPI/v1/data_type.proto
@@ -55,6 +74,7 @@ set(LIBRARY_SRC
     src/subscriberOptions.cpp
     src/subscriptionManager.cpp
     src/subscriptionManagerOptions.cpp
+    src/version.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
     )
@@ -70,7 +90,8 @@ set(HEADER_FILES
     include/uDataPacketService/subscriber.hpp
     include/uDataPacketService/subscriberOptions.hpp 
     include/uDataPacketService/subscriptionManager.hpp
-    include/uDataPacketService/subscriptionManagerOptions.hpp)
+    include/uDataPacketService/subscriptionManagerOptions.hpp
+    include/uDataPacketService/version.hpp)
 set(MODULE_FILES
     src/modules/programOptions.cppm
     src/modules/packetConverter.cppm
