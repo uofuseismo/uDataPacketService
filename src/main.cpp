@@ -372,9 +372,9 @@ int main(int argc, char *argv[])
     // Some prelim stuff to get out of the way
     //NOLINTNEXTLINE(misc-include-cleaner)
     auto consoleLogger = spdlog::stdout_color_st("console");
-    SPDLOG_LOGGER_CRITICAL(consoleLogger,
-                         "Running version {} of uDataPacketService",
-                         UDataPacketService::Version::getVersionWithTag());
+    SPDLOG_LOGGER_INFO(consoleLogger,
+                       "Running version {} of uDataPacketService",
+                       UDataPacketService::Version::getVersionWithTag());
     UDataPacketService::Metrics::initializeMetricsSingleton();
     // Get the ini file from the command line
     std::filesystem::path iniFile;
