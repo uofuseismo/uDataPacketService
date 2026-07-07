@@ -7,6 +7,10 @@ namespace UDataPacketServiceAPI::V1
  class StreamIdentifier;
  class Packet;
 }
+namespace UDataPacketImportAPI::V1
+{
+ class Packet;
+}
 namespace UDataPacketService::Utilities
 {
 
@@ -17,6 +21,10 @@ namespace UDataPacketService::Utilities
 /// @result The end time of the packet.
 [[nodiscard]] std::chrono::microseconds 
     getEndTimeInMicroSeconds(const UDataPacketServiceAPI::V1::Packet &packet);
+
+/// @brief Converts from the input to the output packet.
+UDataPacketServiceAPI::V1::Packet convert(UDataPacketImportAPI::V1::Packet &&input);
+
 
 
 template<typename T> T getNow();

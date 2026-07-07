@@ -1,8 +1,8 @@
-import ProgramOptions;
-import Logger;
-import Metrics;
+//import ProgramOptions;
+//import Logger;
+//import Metrics;
 //import Server;
-import PacketConverter;
+//import PacketConverter;
 
 #include <stdlib.h>
 #include <iostream>
@@ -29,15 +29,20 @@ import PacketConverter;
 //#include <absl/log/initialize.h>
 #include <oneapi/tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketService/metricsSingleton.hpp"
 #include "uDataPacketService/server.hpp"
 #include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/subscriber.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/utilities.hpp"
 #include "uDataPacketService/version.hpp"
+#include "programOptions.hpp"
+#include "metrics.hpp"
+#include "logger.hpp"
 
 namespace
 {   
@@ -169,7 +174,8 @@ public:
         try
         {
             auto newPacket
-                = UDataPacketService::convert(std::move(inputPacket));
+                = UDataPacketService::Utilities::convert(
+                    std::move(inputPacket));
             while (mImportQueue.size() >= mMaximumImportQueueSize)
             {   
                 UDataPacketServiceAPI::V1::Packet workSpace;

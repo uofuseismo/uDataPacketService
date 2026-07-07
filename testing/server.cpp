@@ -15,6 +15,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include "uDataPacketService/metricsSingleton.hpp"
 #include "uDataPacketService/server.hpp"
 #include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
@@ -28,8 +29,6 @@
 #include "uDataPacketServiceAPI/v1/broadcast.grpc.pb.h"
 #include "utilities.hpp"
 #include "certs.hpp"
-
-import Metrics;
 
 #define GRPC_CLIENT_HOST "localhost"
 #define GRPC_SERVER_HOST "0.0.0.0"

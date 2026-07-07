@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(uDataPacketService VERSION 0.0.6 LANGUAGES CXX)
+project(uDataPacketService VERSION 0.0.7 LANGUAGES CXX)
 enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
@@ -18,7 +18,7 @@ if (NOT ${BUILD_SHARED_LIBS})
 endif()
 #find_package(absl CONFIG REQUIRED)
 #find_package(utf8_range CONFIG REQUIRED)
-find_package(Protobuf CONFIG REQUIRED)
+#find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 if (${WITH_CONAN})
    message("Will use Conan OTLP exporters")
@@ -87,6 +87,7 @@ set(LIBRARY_SRC
     src/duplicatePacketDetector.cpp
     src/grpcClientOptions.cpp
     src/grpcServerOptions.cpp
+    src/metricsSingleton.cpp
     src/server.cpp
     src/serverOptions.cpp
     src/stream.cpp
@@ -106,6 +107,7 @@ set(HEADER_FILES
     include/uDataPacketService/duplicatePacketDetector.hpp
     include/uDataPacketService/grpcClientOptions.hpp
     include/uDataPacketService/grpcServerOptions.hpp
+    include/uDataPacketService/metricsSingleton.hpp
     include/uDataPacketService/serverOptions.hpp
     include/uDataPacketService/stream.hpp
     include/uDataPacketService/streamOptions.hpp
@@ -116,11 +118,10 @@ set(HEADER_FILES
     include/uDataPacketService/utilities.hpp
     include/uDataPacketService/version.hpp)
 set(MODULE_FILES
-    src/modules/programOptions.cppm
-    src/modules/packetConverter.cppm
-    src/modules/logger.cppm
-    src/modules/metrics.cppm
-    src/modules/otelSpdlogSink.cppm
+    #src/modules/programOptions.cppm
+    #src/modules/packetConverter.cppm
+    #src/modules/logger.cppm
+    #src/modules/otelSpdlogSink.cppm
     #src/modules/utilities.cppm
     src/modules/asyncWriter.cppm
     #src/modules/server.cppm
@@ -130,7 +131,7 @@ add_library(libuDataPacketService STATIC ${LIBRARY_SRC})
 add_library(uDataPacketService::libuDataPacketService ALIAS libuDataPacketService)
 set_target_properties(libuDataPacketService PROPERTIES
                       OUTPUT_NAME uDataPacketService
-                      CXX_STANDARD 20
+                      CXX_STANDARD 23
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_include_directories(libuDataPacketService
@@ -144,12 +145,20 @@ target_link_libraries(libuDataPacketService
                       PRIVATE gRPC::grpc
                               gRPC::grpc++
                               protobuf::libprotobuf
-                              opentelemetry-cpp::otlp_http_log_record_exporter
-                              opentelemetry-cpp::otlp_http_metric_exporter
                               spdlog::spdlog_header_only
                               Boost::headers
-                              #Boost::program_options
                               Threads::Threads)
+#target_link_libraries(libuDataPacketService
+#                      PUBLIC TBB::tbb
+#                      PRIVATE gRPC::grpc
+#                              gRPC::grpc++
+#                              protobuf::libprotobuf
+#                              opentelemetry-cpp::otlp_http_log_record_exporter
+#                              opentelemetry-cpp::otlp_http_metric_exporter
+#                              spdlog::spdlog_header_only
+#                              Boost::headers
+#                              #Boost::program_options
+#                              Threads::Threads)
 target_sources(libuDataPacketService
                PUBLIC FILE_SET
                       HEADERS
@@ -183,7 +192,7 @@ set_source_files_properties(${PROTO_GENERATED_FILES} ${PROTO_GENERATED_CXX_FILES
 add_executable(uDataPacketService
                src/main.cpp)
 set_target_properties(uDataPacketService PROPERTIES
-                      CXX_STANDARD 20
+                      CXX_STANDARD 23
                       CXX_STANDARD_REQUIRED YES 
                       CXX_EXTENSIONS NO) 
 target_include_directories(uDataPacketService
@@ -191,6 +200,22 @@ target_include_directories(uDataPacketService
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
                            PRIVATE $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}>
                           )
+if (${WITH_CONAN})
+    target_link_libraries(uDataPacketService
+                          PRIVATE
+                             opentelemetry-cpp::opentelemetry-cpp
+                             opentelemetry-cpp::proto_grpc
+                             opentelemetry-cpp::exporter_otlp_grpc
+                             opentelemetry-cpp::exporter_otlp_grpc_client
+                             opentelemetry-cpp::exporter_otlp_grpc_metrics
+                             opentelemetry-cpp::exporter_otlp_http
+                             opentelemetry-cpp::exporter_otlp_http_client
+                             opentelemetry-cpp::exporter_otlp_http_metric
+                             opentelemetry-cpp::exporter_otlp_http_log
+                             opentelemetry-cpp::metrics
+                             opentelemetry-cpp::common
+                             opentelemetry-cpp::api)
+else()
 target_link_libraries(uDataPacketService
                       PUBLIC
                          TBB::tbb
@@ -205,6 +230,22 @@ target_link_libraries(uDataPacketService
                          Boost::program_options
                          Threads::Threads)
 
+#    target_link_libraries(uDataPacketService
+#                          PRIVATE
+#                             opentelemetry-cpp::otlp_http_log_record_exporter
+#                             opentelemetry-cpp::otlp_http_metric_exporter
+#                             opentelemetry-cpp::logs
+#                             opentelemetry-cpp::common
+#                             opentelemetry-cpp::api)
+endif()
+#target_link_libraries(uDataPacketService
+#                      PUBLIC
+#                         TBB::tbb
+#                      PRIVATE
+#                         uDataPacketService::libuDataPacketService
+#                         protobuf::libprotobuf gRPC::grpc  gRPC::grpc++
+#                         Boost::headers Boost::program_options Threads::Threads)
+
 ##########################################################################################
 #                                         Tests                                          #
 ##########################################################################################
@@ -218,7 +259,7 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                   testing/server.cpp
                   )
    set_target_properties(unitTests PROPERTIES
-                         CXX_STANDARD 20
+                         CXX_STANDARD 23
                          CXX_STANDARD_REQUIRED YES 
                          CXX_EXTENSIONS NO) 
    target_link_libraries(unitTests
@@ -228,7 +269,7 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                             uDataPacketService::libuDataPacketService
                             gRPC::grpc
                             gRPC::grpc++
-                            opentelemetry-cpp::otlp_http_metric_exporter
+                            #opentelemetry-cpp::otlp_http_metric_exporter
                             Threads::Threads
                             spdlog::spdlog_header_only
                             Catch2::Catch2 Catch2::Catch2WithMain)
@@ -275,20 +316,20 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
 include(CPackComponent)
 if (${BUILD_CONTAINER})
    message("Will configure container")
-   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.u24.in
-                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.u24 @ONLY)
-   add_custom_target(${PROJECT_NAME}-u24
+   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/Dockerfile.u26.in
+                  ${CMAKE_CURRENT_BINARY_DIR}/Dockerfile.u26 @ONLY)
+   add_custom_target(${PROJECT_NAME}-u26
                      COMMENT "Creating container file for ${PROJECT_NAME}"
                      COMMAND ${CMAKE_CPACK_COMMAND} -G DEB 
                      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-   add_dependencies(${PROJECT_NAME}-u24 uDataPacketService libuDataPacketService)
+   add_dependencies(${PROJECT_NAME}-u26 uDataPacketService libuDataPacketService)
    find_program(buildah_EXECUTABLE buildah)
    if (buildah_EXECUTABLE)
       add_custom_target(buildah
                         COMMENT "Preparing the container with buildah"
-                        COMMAND ${buildah_EXECUTABLE} bud -t udatapacketservice:${PROJECT_VERSION} -t udatapacketservice:latest -f ./Dockerfile.u24
+                        COMMAND ${buildah_EXECUTABLE} bud -t udatapacketservice:${PROJECT_VERSION} -t udatapacketservice:latest -f ./Dockerfile.u26
                         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} VERBATIM)
-      add_dependencies(buildah ${PROJECT_NAME}-u24)
+      add_dependencies(buildah ${PROJECT_NAME}-u26)
    endif()
 endif()
 

@@ -1,7 +1,9 @@
 #include <cmath>
 #include <string>
 #include <chrono>
+#include <memory>
 #include <bit>
+#include <utility>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
@@ -9,10 +11,13 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <google/protobuf/util/time_util.h>
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
+#include "uDataPacketImportAPI/v1/stream_identifier.pb.h"
 #include "utilities.hpp"
+#include "uDataPacketService/utilities.hpp"
 
-import PacketConverter;
+//import PacketConverter;
 
 namespace
 {
@@ -154,7 +159,7 @@ TEMPLATE_TEST_CASE("UDataPacketService", "[packetConveter]",
         importPacket.set_data(packedData);
 
         auto outputPacket
-            = UDataPacketService::convert(std::move(importPacket));
+            = UDataPacketService::Utilities::convert(std::move(importPacket));
 
         REQUIRE(outputPacket.stream_identifier().network() == network);
         REQUIRE(outputPacket.stream_identifier().station() == station);
@@ -191,7 +196,7 @@ TEMPLATE_TEST_CASE("UDataPacketService", "[packetConveter]",
         importPacket.set_data(packedData);
     
         auto outputPacket
-            = UDataPacketService::convert(std::move(importPacket));
+            = UDataPacketService::Utilities::convert(std::move(importPacket));
 
         REQUIRE(outputPacket.stream_identifier().network() == network);
         REQUIRE(outputPacket.stream_identifier().station() == station);

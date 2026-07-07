@@ -1,4 +1,5 @@
-#include <string>
+#include <memory>
+#include <utility>
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/streamOptions.hpp"
 
