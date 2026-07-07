@@ -229,6 +229,7 @@ target_link_libraries(uDataPacketService
                          TBB::tbb
                       PRIVATE
                          uDataPacketService::libuDataPacketService
+                         spdlog::spdlog_header_only
                          protobuf::libprotobuf gRPC::grpc  gRPC::grpc++
                          Boost::headers Boost::program_options Threads::Threads)
 
@@ -253,9 +254,7 @@ if (PROJECT_IS_TOP_LEVEL AND ${BUILD_TESTS})
                             TBB::tbb
                          PRIVATE
                             uDataPacketService::libuDataPacketService
-                            gRPC::grpc
-                            gRPC::grpc++
-                            #opentelemetry-cpp::otlp_http_metric_exporter
+                            gRPC::grpc gRPC::grpc++
                             Threads::Threads
                             spdlog::spdlog_header_only
                             Catch2::Catch2 Catch2::Catch2WithMain)
