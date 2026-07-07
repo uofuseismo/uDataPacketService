@@ -112,12 +112,19 @@ public:
         if (mServer && mServerStarted.load())
         {
             SPDLOG_LOGGER_INFO(mLogger, "Shutting down service");
-            constexpr int64_t timeOutSeconds{1};
-            constexpr int64_t timeOutNanoSeconds{0};
+            const auto shutdownDeadline = mOptions.getShutdownDeadline();
+            // tv_nsec is an int32 and must stay below 1e9, so split the
+            // deadline into whole seconds and remainder nanoseconds
+            const auto timeOutSeconds
+                = std::chrono::duration_cast<std::chrono::seconds>
+                  (shutdownDeadline);
+            const auto timeOutNanoSeconds
+                = std::chrono::duration_cast<std::chrono::nanoseconds>
+                  (shutdownDeadline - timeOutSeconds);
             const gpr_timespec deadline // NOLINT
             {
-                timeOutSeconds,
-                timeOutNanoSeconds,
+                timeOutSeconds.count(),
+                static_cast<int32_t> (timeOutNanoSeconds.count()),
                 GPR_TIMESPAN // NOLINT
             };
             mServer->Shutdown(deadline);

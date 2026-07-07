@@ -59,6 +59,37 @@ TEST_CASE("UDataPacketServer", "[ServerOptions]")
     REQUIRE(options.getMaximumNumberOfSubscribers() == maxSubscribers);
     REQUIRE(options.getGRPCOptions().getHost() == host);
     REQUIRE(options.getGRPCOptions().getPort() == port);
+
+    // Defaults
+    REQUIRE(options.getShutdownDeadline() ==
+            std::chrono::milliseconds {1000});
+    REQUIRE(options.getMaximumWriterPollInterval() ==
+            std::chrono::milliseconds {250});
+
+    // Shutdown deadline and writer poll interval
+    const std::chrono::milliseconds shutdownDeadline{1500};
+    options.setShutdownDeadline(shutdownDeadline);
+    REQUIRE(options.getShutdownDeadline() == shutdownDeadline);
+    REQUIRE_THROWS_AS(
+        options.setShutdownDeadline(std::chrono::milliseconds {0}),
+        std::invalid_argument);
+
+    const std::chrono::milliseconds pollInterval{400};
+    options.setMaximumWriterPollInterval(pollInterval);
+    REQUIRE(options.getMaximumWriterPollInterval() == pollInterval);
+    REQUIRE_THROWS_AS(
+        options.setMaximumWriterPollInterval(std::chrono::milliseconds {0}),
+        std::invalid_argument);
+    // The poll interval must be strictly less than the shutdown deadline
+    REQUIRE_THROWS_AS(
+        options.setMaximumWriterPollInterval(shutdownDeadline),
+        std::invalid_argument);
+    // Side effect: lowering the deadline below the poll interval drags
+    // the poll interval down with it
+    const std::chrono::milliseconds shortDeadline{100};
+    options.setShutdownDeadline(shortDeadline);
+    REQUIRE(options.getShutdownDeadline() == shortDeadline);
+    REQUIRE(options.getMaximumWriterPollInterval() == shortDeadline);
 }
 
 ///--------------------------------------------------------------------------///

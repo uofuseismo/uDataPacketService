@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/grpcServerOptions.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
@@ -10,6 +11,8 @@ class ServerOptions::ServerOptionsImpl
 public:
     GRPCServerOptions mGRPCOptions;
     SubscriptionManagerOptions mSubscriptionManagerOptions;
+    std::chrono::milliseconds mShutdownDeadline{1000};
+    std::chrono::milliseconds mMaximumWriterPollInterval{250};
     int mMaximumNumberOfSubscribers{8};
 };
 
@@ -71,9 +74,52 @@ void ServerOptions::setMaximumNumberOfSubscribers(const int maxSubscribers)
     pImpl->mMaximumNumberOfSubscribers = maxSubscribers;
 }
 
-int ServerOptions::getMaximumNumberOfSubscribers() const noexcept 
+int ServerOptions::getMaximumNumberOfSubscribers() const noexcept
 {
     return pImpl->mMaximumNumberOfSubscribers;
+}
+
+/// Shutdown deadline
+void ServerOptions::setShutdownDeadline(
+    const std::chrono::milliseconds &deadline)
+{
+    if (deadline.count() <= 0)
+    {
+        throw std::invalid_argument("Shutdown deadline must be positive");
+    }
+    pImpl->mShutdownDeadline = deadline;
+    // Side effect: an idle writer must always wake and finish before the
+    // server starts forcibly cancelling RPCs at the shutdown deadline
+    pImpl->mMaximumWriterPollInterval
+        = std::min(pImpl->mMaximumWriterPollInterval, deadline);
+}
+
+std::chrono::milliseconds ServerOptions::getShutdownDeadline() const noexcept
+{
+    return pImpl->mShutdownDeadline;
+}
+
+/// Maximum writer poll interval
+void ServerOptions::setMaximumWriterPollInterval(
+    const std::chrono::milliseconds &interval)
+{
+    if (interval.count() <= 0)
+    {
+        throw std::invalid_argument("Poll interval must be positive");
+    }
+    if (interval >= pImpl->mShutdownDeadline)
+    {
+        throw std::invalid_argument(
+            "Poll interval must be less than the shutdown deadline ("
+          + std::to_string(pImpl->mShutdownDeadline.count()) + " ms)");
+    }
+    pImpl->mMaximumWriterPollInterval = interval;
+}
+
+std::chrono::milliseconds
+ServerOptions::getMaximumWriterPollInterval() const noexcept
+{
+    return pImpl->mMaximumWriterPollInterval;
 }
 
 /// Subscription manager options

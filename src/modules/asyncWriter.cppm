@@ -11,13 +11,13 @@ module;
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/alarm.h>
 #include <grpcpp/support/status.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/logger.h>
@@ -265,28 +265,25 @@ Subscriber must provide access token in x-custom-auth-token header field.
         // Start
         SPDLOG_LOGGER_DEBUG(mLogger, "Subscribe RPC for {} is starting",
                             mPeer);
-        nextWrite();
+        mMaximumPollInterval = mOptions.getMaximumWriterPollInterval();
+        pump();
     }
 
     void OnWriteDone(bool ok) override
     {
         if (!ok)
         {
-            if (mContext)
+            if (mContext && mContext->IsCancelled())
             {
-                if (mContext->IsCancelled())
-                {
-                    return Finish(grpc::Status::CANCELLED);
-                }   
+                return finishUp(grpc::Status::CANCELLED);
             }
-            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
-                                       "Unexpected failure"));
+            return finishUp(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                         "Unexpected failure"));
         }
         // Packet is flushed; can now safely purge the element to write
-        mWriteInProgress.store(false, std::memory_order_seq_cst);
         mPacketsQueue.pop();
         // Start next write
-        nextWrite();
+        pump();
     }
 
     // This needs to perform quickly.  I should do blocking work but
@@ -318,124 +315,120 @@ Subscriber must provide access token in x-custom-auth-token header field.
         SPDLOG_LOGGER_INFO(mLogger,
                            "Subscribe RPC cancelled for {}.",
                            mPeer);
-        if (mSubscribed.load())
-        {
-            mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-            mSubscribed.store(false);
-        }
+        // Wake the pump: a pending alarm fires immediately with ok=false
+        // and a pending write completes with ok=false via OnWriteDone.
+        // Either way the pump sees the cancel and finishes up.
+        mAlarm.Cancel();
     }
 
 #ifndef NDEBUG
     ~Subscribe()
     {
         SPDLOG_LOGGER_INFO(mLogger, "In destructor");
-    }   
+    }
 #endif
 //private:
-    void nextWrite()
+    // The write pump.  Exactly one continuation is outstanding at any
+    // instant - an in-flight StartWrite (resumes in OnWriteDone) or an
+    // armed alarm (resumes in the alarm callback) - so the pump is
+    // logically single threaded and holds no thread while idle.  Finish
+    // is only ever called from the pump, so when OnDone runs nothing can
+    // still be pending and delete this is safe.
+    void pump()
     {
-        // Keep running either until the server or client quits
-        while (mKeepRunning->load())
+        // Server shutting down or client gone?
+        if (!mKeepRunning->load() || mContext->IsCancelled())
         {
-            // Cancel means we leave now
-            if (mContext->IsCancelled()){break;}
-
-            // Get any remaining packets on the queue on the wire
-            if (!mPacketsQueue.empty() &&
-                !mWriteInProgress.load(std::memory_order_seq_cst))
-            {
-                const auto &packet = mPacketsQueue.front();
-                mWriteInProgress.store(true, std::memory_order_seq_cst);
-                mMetrics.incrementSentPacketsCounter();
-                StartWrite(&packet);
-                return;
-            }
-
-            // Try to get more packets to write while I `wait.'
-            if (mPacketsQueue.empty())
-            {
-                try
-                {
-                    auto packetsBuffer
-                         = mSubscriptionManager->getPackets(mContextAddress);
-                    for (auto &packet : packetsBuffer)
-                    {
-                        const bool allow{true}; // TODO check packet at some point?
-#ifndef NDEBUG
-                        try
-                        {
-                            checkPacket(packet);
-                        }
-                        catch (const std::exception &e)
-                        {
-                            SPDLOG_LOGGER_WARN(mLogger,
-                               "Skipping invalid packet: ({})",
-                               std::string {e.what()});
-                            continue;
-                        }   
-#endif
-                        if (mCheckPackets)
-                        {
-                        }
-                        if (!allow){continue;}
-                        if (mPacketsQueue.size() > mMaximumQueueSize)
-                        {
-                            SPDLOG_LOGGER_WARN(mLogger,
-                               "RPC writer queue exceeded for {} - popping element",
-                               mPeer);
-                            mPacketsQueue.pop();
-                         }
-                         mPacketsQueue.push(std::move(packet));
-                    }
-                }
-                catch (const std::exception &e)
-                {
-                    SPDLOG_LOGGER_WARN(mLogger,
-                                       "Failed to get next packet for {} because {}",
-                                       mPeer,
-                                       std::string {e.what()});
-                }
-            }
-
-            // No new packets were acquired and I'm not waiting for a write.
-            // Give me stream manager a break.
-            if (mPacketsQueue.empty() && !mWriteInProgress.load(std::memory_order_seq_cst))
-            {
-                std::this_thread::sleep_for(mTimeOut);
-            }
-        }
-        if (mContext)
-        {
-            // The context is still valid so try to remove it from the
-            // subscriptions.  This can be the case whether the server is
-            // shutting down or the client bailed.
-            if (mSubscribed.load())
-            {
-                mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-                mSubscribed.store(false);
-            }
             if (mContext->IsCancelled())
             {
                 SPDLOG_LOGGER_INFO(mLogger,
                  "Terminating acquisition for {} because of client side cancel",
                     mPeer);
-                Finish(grpc::Status::CANCELLED);
+                return finishUp(grpc::Status::CANCELLED);
             }
-            else
-            {
-                SPDLOG_LOGGER_INFO(mLogger,
+            SPDLOG_LOGGER_INFO(mLogger,
                  "Terminating acquisition for {} because of server side cancel",
-                    mPeer);
-                Finish(grpc::Status::OK);
+                mPeer);
+            return finishUp(grpc::Status::OK);
+        }
+
+        // Try to get more packets to write
+        if (mPacketsQueue.empty())
+        {
+            try
+            {
+                auto packetsBuffer
+                     = mSubscriptionManager->getPackets(mContextAddress);
+                for (auto &packet : packetsBuffer)
+                {
+                    const bool allow{true}; // TODO check packet at some point?
+#ifndef NDEBUG
+                    try
+                    {
+                        checkPacket(packet);
+                    }
+                    catch (const std::exception &e)
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                           "Skipping invalid packet: ({})",
+                           std::string {e.what()});
+                        continue;
+                    }
+#endif
+                    if (mCheckPackets)
+                    {
+                    }
+                    if (!allow){continue;}
+                    if (mPacketsQueue.size() > mMaximumQueueSize)
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                           "RPC writer queue exceeded for {} - popping element",
+                           mPeer);
+                        mPacketsQueue.pop();
+                     }
+                     mPacketsQueue.push(std::move(packet));
+                }
+            }
+            catch (const std::exception &e)
+            {
+                SPDLOG_LOGGER_WARN(mLogger,
+                                   "Failed to get next packet for {} because {}",
+                                   mPeer,
+                                   std::string {e.what()});
             }
         }
-        else
+
+        // Data to send: put the front packet on the wire.  The pump
+        // resumes in OnWriteDone.
+        if (!mPacketsQueue.empty())
         {
-            SPDLOG_LOGGER_WARN(mLogger,
-                               "The context for {} has disappeared",
-                               mPeer);
+            mCurrentPollInterval = mPollInterval; // Data is flowing again
+            mMetrics.incrementSentPacketsCounter();
+            StartWrite(&mPacketsQueue.front());
+            return;
         }
+
+        // Idle: hand the thread back; the alarm resumes the pump at the
+        // deadline (ok=true) or immediately on Cancel (ok=false).  While
+        // the stream stays quiet back off towards the maximum, which the
+        // options keep below the server shutdown deadline.
+        const auto interval
+            = std::min(mCurrentPollInterval, mMaximumPollInterval);
+        mCurrentPollInterval = std::min(interval*2, mMaximumPollInterval);
+        mAlarm.Set(std::chrono::system_clock::now() + interval,
+                   [this](bool){pump();});
     }
+
+    void finishUp(const grpc::Status &status)
+    {
+        if (mSubscribed.load())
+        {
+            mSubscriptionManager->unsubscribeFromAll(mContextAddress);
+            mSubscribed.store(false);
+        }
+        Finish(status);
+    }
+
     grpc::CallbackServerContext *mContext{nullptr};
     uintptr_t mContextAddress;
     ServerOptions mOptions;
@@ -446,15 +439,17 @@ Subscriber must provide access token in x-custom-auth-token header field.
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     UDataPacketService::Metrics::MetricsSingleton &mMetrics
-    {   
+    {
         UDataPacketService::Metrics::MetricsSingleton::getInstance()
-    };  
+    };
+    grpc::Alarm mAlarm;
     std::string mPeer;
     size_t mMaximumQueueSize{2048};
     std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;
-    std::chrono::milliseconds mTimeOut{20};
+    std::chrono::milliseconds mPollInterval{20};
+    std::chrono::milliseconds mCurrentPollInterval{mPollInterval};
+    std::chrono::milliseconds mMaximumPollInterval{250};
     std::atomic<bool> mSubscribed{false};
-    std::atomic<bool> mWriteInProgress{false};
     bool mCheckPackets{false};
 };
 
@@ -564,28 +559,25 @@ Subscriber must provide access token in x-custom-auth-token header field.
             return;
         }
         // Start
-        nextWrite();
-    }   
+        mMaximumPollInterval = mOptions.getMaximumWriterPollInterval();
+        pump();
+    }
 
     void OnWriteDone(bool ok) override
     {
         if (!ok)
         {
-            if (mContext)
+            if (mContext && mContext->IsCancelled())
             {
-                if (mContext->IsCancelled())
-                {
-                    return Finish(grpc::Status::CANCELLED);
-                }   
+                return finishUp(grpc::Status::CANCELLED);
             }
-            return Finish(grpc::Status(grpc::StatusCode::UNKNOWN,
-                                       "Unexpected failure"));
+            return finishUp(grpc::Status(grpc::StatusCode::UNKNOWN,
+                                         "Unexpected failure"));
         }
         // Packet is flushed; can now safely purge the element to write
-        mWriteInProgress = false;
         mPacketsQueue.pop();
         // Start next write
-        nextWrite();
+        pump();
     }
 
     // This needs to perform quickly.  I should do blocking work but
@@ -613,145 +605,146 @@ Subscriber must provide access token in x-custom-auth-token header field.
     }
 
     void OnCancel() override
-    {   
+    {
         SPDLOG_LOGGER_INFO(mLogger,
                            "Subscribe to all RPC cancelled for {}.",
                            mPeer);
-        if (mSubscribed)
-        {   
-            mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-            mSubscribed = false;
-        }   
-    }   
+        // Wake the pump: a pending alarm fires immediately with ok=false
+        // and a pending write completes with ok=false via OnWriteDone.
+        // Either way the pump sees the cancel and finishes up.
+        mAlarm.Cancel();
+    }
 
 #ifndef NDEBUG
     ~SubscribeToAll()
-    {   
+    {
         SPDLOG_LOGGER_INFO(mLogger, "In destructor");
-    }   
+    }
 #endif
 
 //private:
-    void nextWrite()
+    // The write pump.  Exactly one continuation is outstanding at any
+    // instant - an in-flight StartWrite (resumes in OnWriteDone) or an
+    // armed alarm (resumes in the alarm callback) - so the pump is
+    // logically single threaded and holds no thread while idle.  Finish
+    // is only ever called from the pump, so when OnDone runs nothing can
+    // still be pending and delete this is safe.
+    void pump()
     {
-        // Keep running either until the server or client quits
-        while (mKeepRunning->load())
+        // Server shutting down or client gone?
+        if (!mKeepRunning->load() || mContext->IsCancelled())
         {
-            if (mContext->IsCancelled()){break;}
-
-            if (!mPacketsQueue.empty() && !mWriteInProgress)
-            {
-                const auto &packet = mPacketsQueue.front();
-                mWriteInProgress = true;
-                mMetrics.incrementSentPacketsCounter();
-                StartWrite(&packet);
-                return;
-            }
-
-            // Try to get more packets to write while I `wait.'
-            if (mPacketsQueue.empty())
-            {
-                try
-                {
-                    auto packetsBuffer
-                         = mSubscriptionManager->getPackets(mContextAddress);
-                    for (auto &packet : packetsBuffer)
-                    {
-                        const bool allow{true}; // TODO actually check packets?
-#ifndef NDEBUG
-                        try
-                        {
-                            checkPacket(packet);
-                        }
-                        catch (const std::exception &e)
-                        {
-                            SPDLOG_LOGGER_WARN(mLogger,
-                               "Skipping invalid packet: ({})",
-                               std::string {e.what()});
-                            continue;
-                        }
-#endif
-                        if (mCheckPackets)
-                        {
-
-                        }
-                        if (!allow){continue;}
-                        if (mPacketsQueue.size() > mMaximumQueueSize)
-                        {
-                            SPDLOG_LOGGER_WARN(mLogger,
-                               "RPC writer queue exceeded for {} - popping element",
-                               mPeer);
-                            mPacketsQueue.pop();
-                         }
-                         mPacketsQueue.push(std::move(packet));
-                    }
-                }
-                catch (const std::exception &e)
-                {
-                    SPDLOG_LOGGER_WARN(mLogger,
-                                       "Failed to get next packet for {} because {}",
-                                       mPeer,
-                                       std::string {e.what()});
-                }
-            }
-
-            // No new packets were acquired and I'm not waiting for a write.
-            // Give me stream manager a break.
-            if (mPacketsQueue.empty() && !mWriteInProgress)
-            {
-                std::this_thread::sleep_for(mTimeOut);
-            }
-        }
-
-        if (mContext)
-        {
-            if (mSubscribed)
-            {
-                mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-                mSubscribed = false;
-            }
             if (mContext->IsCancelled())
             {
                 SPDLOG_LOGGER_INFO(mLogger,
                  "Terminating acquisition for {} because of client side cancel",
                     mPeer);
-                Finish(grpc::Status::CANCELLED);
+                return finishUp(grpc::Status::CANCELLED);
             }
-            else
-            {
-                SPDLOG_LOGGER_INFO(mLogger,
+            SPDLOG_LOGGER_INFO(mLogger,
                  "Terminating acquisition for {} because of server side cancel",
-                    mPeer);
-                Finish(grpc::Status::OK);
+                mPeer);
+            return finishUp(grpc::Status::OK);
+        }
+
+        // Try to get more packets to write
+        if (mPacketsQueue.empty())
+        {
+            try
+            {
+                auto packetsBuffer
+                     = mSubscriptionManager->getPackets(mContextAddress);
+                for (auto &packet : packetsBuffer)
+                {
+                    const bool allow{true}; // TODO actually check packets?
+#ifndef NDEBUG
+                    try
+                    {
+                        checkPacket(packet);
+                    }
+                    catch (const std::exception &e)
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                           "Skipping invalid packet: ({})",
+                           std::string {e.what()});
+                        continue;
+                    }
+#endif
+                    if (mCheckPackets)
+                    {
+                    }
+                    if (!allow){continue;}
+                    if (mPacketsQueue.size() > mMaximumQueueSize)
+                    {
+                        SPDLOG_LOGGER_WARN(mLogger,
+                           "RPC writer queue exceeded for {} - popping element",
+                           mPeer);
+                        mPacketsQueue.pop();
+                     }
+                     mPacketsQueue.push(std::move(packet));
+                }
+            }
+            catch (const std::exception &e)
+            {
+                SPDLOG_LOGGER_WARN(mLogger,
+                                   "Failed to get next packet for {} because {}",
+                                   mPeer,
+                                   std::string {e.what()});
             }
         }
-        else
+
+        // Data to send: put the front packet on the wire.  The pump
+        // resumes in OnWriteDone.
+        if (!mPacketsQueue.empty())
         {
-            SPDLOG_LOGGER_WARN(mLogger,
-                               "The context for {} has disappeared",
-                               mPeer);
+            mCurrentPollInterval = mPollInterval; // Data is flowing again
+            mMetrics.incrementSentPacketsCounter();
+            StartWrite(&mPacketsQueue.front());
+            return;
         }
+
+        // Idle: hand the thread back; the alarm resumes the pump at the
+        // deadline (ok=true) or immediately on Cancel (ok=false).  While
+        // the stream stays quiet back off towards the maximum, which the
+        // options keep below the server shutdown deadline.
+        const auto interval
+            = std::min(mCurrentPollInterval, mMaximumPollInterval);
+        mCurrentPollInterval = std::min(interval*2, mMaximumPollInterval);
+        mAlarm.Set(std::chrono::system_clock::now() + interval,
+                   [this](bool){pump();});
+    }
+
+    void finishUp(const grpc::Status &status)
+    {
+        if (mSubscribed.load())
+        {
+            mSubscriptionManager->unsubscribeFromAll(mContextAddress);
+            mSubscribed.store(false);
+        }
+        Finish(status);
     }
 
     grpc::CallbackServerContext *mContext{nullptr};
     uintptr_t mContextAddress;
     ServerOptions mOptions;
     std::shared_ptr
-    <   
+    <
         UDataPacketService::SubscriptionManager
     > mSubscriptionManager{nullptr};
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::atomic<bool> *mKeepRunning{nullptr};
     UDataPacketService::Metrics::MetricsSingleton &mMetrics
-    {   
+    {
         UDataPacketService::Metrics::MetricsSingleton::getInstance()
-    };  
+    };
+    grpc::Alarm mAlarm;
     std::string mPeer;
     size_t mMaximumQueueSize{2048};
     std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;
-    std::chrono::milliseconds mTimeOut{10};
-    bool mSubscribed{false};
-    bool mWriteInProgress{false};
+    std::chrono::milliseconds mPollInterval{10};
+    std::chrono::milliseconds mCurrentPollInterval{mPollInterval};
+    std::chrono::milliseconds mMaximumPollInterval{250};
+    std::atomic<bool> mSubscribed{false};
     bool mCheckPackets{false};
 };
 
