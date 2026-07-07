@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cmath>
+#include <map>
 #include <mutex>
 #include <memory>
 #include <optional>
@@ -9,13 +10,11 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <spdlog/spdlog.h>
 #include <spdlog/logger.h>
-#include <oneapi/tbb/concurrent_map.h>
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
 #include "uDataPacketService/utilities.hpp"
@@ -79,18 +78,21 @@ public:
     /// Subscriber gets next packet
     [[nodiscard]] std::optional<UDataPacketServiceAPI::V1::Packet>
         getNextPacket(const uintptr_t contextAddress) noexcept
-    {   
+    {
         std::optional<UDataPacketServiceAPI::V1::Packet> result{std::nullopt};
+        {
+        const std::lock_guard<std::mutex> lock(mMutex);
         auto idx = mSubscribersMap.find(contextAddress);
         if (idx != mSubscribersMap.end())
         {
-            if (!idx->second.empty()) 
+            if (!idx->second.empty())
             {
-                result 
+                result
                     = std::make_optional<UDataPacketServiceAPI::V1::Packet>
                       (std::move(idx->second.front()));
                 idx->second.pop();
             }
+        }
         }
         return result;
     }   
@@ -99,49 +101,24 @@ public:
     [[nodiscard]] bool subscribe(const uintptr_t contextAddress,
                                  const bool enqueueLatestPacket)
     {
-        auto contextAddressString = std::to_string(contextAddress);
         bool wasAdded{false};
-        if (!mSubscribersMap.contains(contextAddress))
         {
-            std::pair
-            <
-                uintptr_t,
-                std::queue<UDataPacketServiceAPI::V1::Packet>
-            > newElement;
-            newElement.first = contextAddress;
-            if (enqueueLatestPacket && mHaveMostRecentPacket)
-            {
-                newElement.second.push(mMostRecentPacket);
-            }
-            auto [it, added] = mSubscribersMap.insert(std::move(newElement));
-            if (!added)
-            {
-                wasAdded = false;
-#ifndef NDEBUG
-                if (mLogger)
-                {
-                    SPDLOG_LOGGER_WARN(mLogger,
-                                       "Couldn't add new subscriber {} to {}",
-                                       contextAddressString,
-                                       mStreamIdentifier);
-                }
-#endif
-            }
-            else
-            {
-                wasAdded = true;
-            }
+        const std::lock_guard<std::mutex> lock(mMutex);
+        auto [it, added] = mSubscribersMap.try_emplace(contextAddress);
+        if (added && enqueueLatestPacket && mHaveMostRecentPacket)
+        {
+            it->second.push(mMostRecentPacket);
         }
-        // All done
+        wasAdded = added;
+        }
         if (wasAdded)
         {
-#ifndef NDEBUG
             if (mLogger)
             {
-                SPDLOG_LOGGER_DEBUG(mLogger, "{} subscribed to {}", 
-                                    contextAddressString, mStreamIdentifier);
+                SPDLOG_LOGGER_DEBUG(mLogger, "{} subscribed to {}",
+                                    std::to_string(contextAddress),
+                                    mStreamIdentifier);
             }
-#endif
         }
         return wasAdded;
     }
@@ -152,57 +129,30 @@ public:
     [[nodiscard]]
     Stream::UnsubscribeResponse unsubscribe(const uintptr_t contextAddress)
     {
-        auto result = Stream::UnsubscribeResponse::Unsubscribed;
-        // Erase is not thread safe
-        size_t originalSize{0};
-        size_t newSize{0};
-        bool wasUnsubscribed{false};
+        size_t numberErased{0};
         {
         const std::lock_guard<std::mutex> lock(mMutex);
-        originalSize = mSubscribersMap.size();
-        const size_t exists = mSubscribersMap.unsafe_erase(contextAddress);
-        newSize = mSubscribersMap.size();
-        if (exists == 1)
-        {
-            wasUnsubscribed = true;
-            result = Stream::UnsubscribeResponse::Unsubscribed;
+        numberErased = mSubscribersMap.erase(contextAddress);
         }
-        else if (exists == 0)
+        auto result = (numberErased == 1) ?
+                      Stream::UnsubscribeResponse::Unsubscribed :
+                      Stream::UnsubscribeResponse::NeverSubscribed;
+        if (mLogger)
         {
-            result = Stream::UnsubscribeResponse::NeverSubscribed;
-        }
-        }
-        if (wasUnsubscribed)
-        {
-            if (newSize + 1 != originalSize)
-            {
-                throw std::runtime_error(
-                    "Unexpected behavior during unsubscribe");
-            }
-#ifndef NDEBUG
-            if (mLogger)
+            if (result == Stream::UnsubscribeResponse::Unsubscribed)
             {
                 SPDLOG_LOGGER_DEBUG(mLogger,
                                     "{} unsubscribed from {}",
-                                     contextAddressString, mStreamIdentifier);
+                                    std::to_string(contextAddress),
+                                    mStreamIdentifier);
             }
-#endif
-        }
-        else
-        {
-            if (newSize != originalSize)
-            {   
-                throw std::runtime_error(
-                   "Unexpected resize during unsubscribe");
-            }   
-#ifndef NDEBUG
-            if (mLogger)
+            else
             {
                 SPDLOG_LOGGER_DEBUG(mLogger,
                                     "{} never subscribed to {}",
-                                     contextAddressString, mStreamIdentifier);
+                                    std::to_string(contextAddress),
+                                    mStreamIdentifier);
             }
-#endif
         }
         return result;
     }
@@ -225,46 +175,45 @@ public:
 
     /// The number of subscribers.
     int getNumberOfSubscribers() const noexcept
-    {   
+    {
+        const std::lock_guard<std::mutex> lock(mMutex);
         return static_cast<int> (mSubscribersMap.size());
-    }   
+    }
 
     /// The current subscribers.
     std::set<uintptr_t> getSubscribers() const noexcept
-    {   
-        std::vector<uintptr_t> keys;
-        keys.reserve(mSubscribersMap.size());
-        for (const auto &item : mSubscribersMap)
-        {   
-            keys.push_back(item.first);
-        }   
-        // Convert to a set
+    {
         std::set<uintptr_t> result;
-        for (const auto &key : keys)
+        const std::lock_guard<std::mutex> lock(mMutex);
+        for (const auto &item : mSubscribersMap)
         {
-            result.insert(key);
-        }   
+            result.insert(item.first);
+        }
         return result;
     }
     /// @result True indicates this subscriber is subscribed.
     [[nodiscard]] bool isSubscribed(const uintptr_t contextAddress) const noexcept
-    {   
+    {
+        const std::lock_guard<std::mutex> lock(mMutex);
         return mSubscribersMap.contains(contextAddress);
-    }   
+    }
 
 //private:
+    // mMutex guards the subscribers map, its queues, and the
+    // most-recent-packet state; hold it in every function touching these.
     mutable std::mutex mMutex;
-    StreamOptions mOptions;
-    std::shared_ptr<spdlog::logger> mLogger{nullptr};
-    oneapi::tbb::concurrent_map
+    std::map
     <
         uintptr_t,
         std::queue<UDataPacketServiceAPI::V1::Packet>
     > mSubscribersMap;
     UDataPacketServiceAPI::V1::Packet mMostRecentPacket;
+    bool mHaveMostRecentPacket{false};
+    // Immutable after construction
+    StreamOptions mOptions;
+    std::shared_ptr<spdlog::logger> mLogger{nullptr};
     std::string mStreamIdentifier;
     size_t mMaximumQueueSize{8};
-    bool mHaveMostRecentPacket{false};
 };
 
 Stream::Stream(UDataPacketServiceAPI::V1::Packet &&packet,

@@ -1,7 +1,7 @@
 #include <chrono>
 #include <cstdint>
-#include <cstddef>
 #include <exception>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -15,8 +15,6 @@
 #endif
 #include <spdlog/spdlog.h>
 #include <spdlog/logger.h>
-#include <oneapi/tbb/concurrent_map.h>
-#include <oneapi/tbb/concurrent_set.h>
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/stream.hpp"
@@ -43,17 +41,26 @@ public:
     void enqueuePacket(UDataPacketServiceAPI::V1::Packet &&packet)
     {
         auto streamIdentifier = Utilities::toName(packet);
+        // Hot path: the stream exists.  Look up its address under the lock
+        // then deliver outside it - streams are never removed from the map
+        // so the pointer stays valid and packet delivery only contends on
+        // the stream's own lock.
+        Stream *existingStream{nullptr};
+        {
+        const std::lock_guard<std::mutex> lock(mMutex);
         auto idx = mStreamsMap.find(streamIdentifier);
-        if (idx != mStreamsMap.end())
+        if (idx != mStreamsMap.end()){existingStream = idx->second.get();}
+        }
+        if (existingStream)
         {
             try
             {
-                idx->second->setNextPacket(std::move(packet));
+                existingStream->setNextPacket(std::move(packet));
             }
             catch (const std::exception &e)
             {
                 throw std::runtime_error(
-                    "Subscription manager failed to enqueue " 
+                    "Subscription manager failed to enqueue "
                   + streamIdentifier + " because " + std::string {e.what()});
             }
             return;
@@ -74,25 +81,46 @@ public:
         assert(stream != nullptr);
 #endif
         SPDLOG_LOGGER_DEBUG(mLogger, "Adding {}", streamIdentifier);
-        std::pair
-        <
-            std::string,
-            std::unique_ptr<Stream>
-        > newStream{streamIdentifier, std::move(stream)};
-        auto [jdx, inserted] = mStreamsMap.insert(std::move(newStream));
-        if (inserted)
+        // Cold path (once per stream): insert the stream and drain the
+        // pending subscriptions under the manager lock.  Locking order is
+        // always manager -> stream; Stream never calls back into this class.
         {
-            auto streamIdentifier = jdx->second->getIdentifier();
-            // Whoever was subscribed to all is not subscribed to this stream
-            for (const auto &pendingSubscription : mPendingSubscribeToAllRequests)
+        const std::lock_guard<std::mutex> lock(mMutex);
+        auto [jdx, inserted]
+            = mStreamsMap.try_emplace(streamIdentifier, std::move(stream));
+        if (!inserted)
+        {
+            throw std::runtime_error("Failed to insert " + streamIdentifier
+                                   + " into streams map");
+        }
+        Stream *newStream = jdx->second.get();
+        // Whoever was subscribed to all is now subscribed to this stream
+        for (const auto &contextAddress : mPendingSubscribeToAllRequests)
+        {
+            constexpr bool enqueueNextPacket{true};
+            if (newStream->subscribe(contextAddress, enqueueNextPacket))
             {
-                auto contextAddress
-                    = reinterpret_cast<uintptr_t> (pendingSubscription);
+                addToActiveSubscriptionsMap(contextAddress, streamIdentifier);
+            }
+            else
+            {
+                SPDLOG_LOGGER_WARN(mLogger,
+                                   "Failed to subscribe {} to {}",
+                                   contextAddress, streamIdentifier);
+            }
+        }
+        // Whoever was particularly interested in this stream should be
+        // subscribed; purge contexts whose every request is now filled
+        for (auto it = mPendingSubscriptionRequests.begin();
+             it != mPendingSubscriptionRequests.end();
+             )
+        {
+            auto contextAddress = it->first;
+            if (it->second.erase(streamIdentifier) == 1)
+            {
                 constexpr bool enqueueNextPacket{true};
-                if (jdx->second->subscribe(contextAddress, enqueueNextPacket))
+                if (newStream->subscribe(contextAddress, enqueueNextPacket))
                 {
-                    // Successful subscribe to all; add to active
-                    // subscriptions 
                     addToActiveSubscriptionsMap(contextAddress,
                                                 streamIdentifier);
                 }
@@ -103,58 +131,18 @@ public:
                                        contextAddress, streamIdentifier);
                 }
             }
-            // Whoever was particularly interested in this stream should be
-            // subscribed
-            for (auto &pendingSubscription : mPendingSubscriptionRequests)
+            if (it->second.empty())
             {
-                auto kdx = pendingSubscription.second.find(streamIdentifier);
-                if (kdx != pendingSubscription.second.end())
-                {
-                    auto contextAddress
-                        = reinterpret_cast<uintptr_t> (pendingSubscription.first);
-                    constexpr bool enqueueNextPacket{true}; 
-                    if (jdx->second->subscribe(contextAddress, enqueueNextPacket))
-                    {
-                        // Successful subscribe; add to the active subscriptions
-                        addToActiveSubscriptionsMap(contextAddress,
-                                                    streamIdentifier);
-                    }
-                    else
-                    {
-                        SPDLOG_LOGGER_WARN(mLogger,
-                                           "Failed to subscribe {} to {}",
-                                           contextAddress, streamIdentifier);
-                    }
-                    pendingSubscription.second.erase(streamIdentifier);
-                } 
+                SPDLOG_LOGGER_DEBUG(mLogger,
+                                    "All pending subscriptions filled for {}",
+                                    std::to_string(contextAddress));
+                it = mPendingSubscriptionRequests.erase(it);
             }
-            // If all of the subscriber's requests have been filled then purge
-            // it from the pending list
-            for (auto it = mPendingSubscriptionRequests.cbegin();
-                 it != mPendingSubscriptionRequests.cend();
-                 )
+            else
             {
-                // This guy is fully subscribed
-                if (it->second.empty())
-                {
-                    SPDLOG_LOGGER_DEBUG(mLogger,
-                                        "All pending subscriptions filled for {}",
-                                        std::to_string {it->first});
-                    {
-                    const std::lock_guard<std::mutex> lock(mMutex);
-                    mPendingSubscriptionRequests.unsafe_erase(it++);
-                    }
-                }
-                else
-                {
-                    ++it;
-                }
+                ++it;
             }
         }
-        else
-        {
-            throw std::runtime_error("Failed to insert " + streamIdentifier
-                                   + " into streams map");
         }
     }
 
@@ -165,6 +153,7 @@ public:
             &streamIdentifiers)
     {
         if (streamIdentifiers.empty()){return;}
+        const std::lock_guard<std::mutex> lock(mMutex);
         for (const auto &identifier : streamIdentifiers)
         {
             auto streamIdentifier = Utilities::toName(identifier);
@@ -175,7 +164,7 @@ public:
                 try
                 {
                     // I'm joining late
-                    constexpr bool enqueueNextPacket{false}; 
+                    constexpr bool enqueueNextPacket{false};
                     if (idx->second->subscribe(contextAddress,
                                                enqueueNextPacket))
                     {
@@ -200,51 +189,23 @@ public:
                                       "Failed to subscribe {} to {} because {}",
                                       std::to_string(contextAddress),
                                       streamIdentifier,
-                                      std::string {e.what()});                          
+                                      std::string {e.what()});
                 }
             }
             else
             {
-                // Stream doesn't exist yet, add stream to pending subscriptions
-                // Check our pending subscriptions for this context
-                auto jdx = mPendingSubscriptionRequests.find(contextAddress);
-                if (jdx != mPendingSubscriptionRequests.end())
-                {
-                    // The context already has this subscription pending
-                    if (jdx->second.contains(streamIdentifier))
-                    {
-                        SPDLOG_LOGGER_DEBUG(mLogger,
-                                  "{} already has a pending subscription for {}",
-                                  std::to_string(contextAddress),
-                                  streamIdentifier);
-                    }
-                    else
-                    {
-                        // Now it's pending
-                        jdx->second.insert(streamIdentifier);
-                    }
-                }
-                else
-                {
-                    // Need a new context with a new pending subscription
-                    std::set<std::string> tempSet{streamIdentifier};
-                    mPendingSubscriptionRequests.insert(
-                        std::pair {contextAddress, std::move(tempSet)}
-                    );
-                }
-
+                // Stream doesn't exist yet; note the pending subscription
+                mPendingSubscriptionRequests[contextAddress]
+                    .insert(streamIdentifier);
             }
         } // Loop on desired streams
-        // Update number of subscribers 
-        {
-        const std::lock_guard<std::mutex> lock(mMutex);
-        mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
-        }
+        mNumberOfSubscribers = -1; // Reset for getNumberOfSubscribers()
     }
 
     /// Context is subscribe to all streams
     void subscribeToAll(uintptr_t contextAddress)
     {
+        const std::lock_guard<std::mutex> lock(mMutex);
         if (mPendingSubscribeToAllRequests.contains(contextAddress))
         {
             SPDLOG_LOGGER_INFO(mLogger,
@@ -296,50 +257,38 @@ public:
         }
         // And be ready for all future streams that come online
         mPendingSubscribeToAllRequests.insert(contextAddress);
-        // Signal update number of subscribers 
-        {
-        const std::lock_guard<std::mutex> lock(mMutex);
-        mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
-        }
+        mNumberOfSubscribers = -1; // Reset for getNumberOfSubscribers()
     }
 
     [[nodiscard]] std::vector<UDataPacketServiceAPI::V1::Packet>
         getPackets(uintptr_t contextAddress) const
     {
-        std::vector<UDataPacketServiceAPI::V1::Packet> result;
-        result.reserve(16);
-        // Look through my active subscriptions
-        for (const auto &activeSubscription : mActiveSubscriptionsMap)
+        // Hot path: copy this context's stream pointers out under the lock,
+        // then drain the streams outside it.  Streams are never removed so
+        // the pointers remain valid.
+        std::vector<Stream *> streams;
         {
-            for (const auto &streamIdentifier : activeSubscription.second)
+        const std::lock_guard<std::mutex> lock(mMutex);
+        auto idx = mActiveSubscriptionsMap.find(contextAddress);
+        if (idx == mActiveSubscriptionsMap.end()){return {};}
+        streams.reserve(idx->second.size());
+        for (const auto &streamIdentifier : idx->second)
+        {
+            const auto streamIndex = mStreamsMap.find(streamIdentifier);
+            if (streamIndex != mStreamsMap.end())
             {
-                const auto streamIndex = mStreamsMap.find(streamIdentifier);
-                if (streamIndex != mStreamsMap.end())
-                {
-                    try
-                    {
-                        auto packet
-                            = streamIndex->second->getNextPacket(contextAddress);
-                        if (packet)
-                        {
-                            result.push_back(std::move(*packet));
-                        }
-                    }
-                    catch (const std::exception &e)
-                    {
-                        SPDLOG_LOGGER_WARN(mLogger,
-                        "Failed to get packet from stream {} for {} because {}",
-                          streamIndex->first,
-                          std::to_string(contextAddress),
-                          std::string {e.what()});
-                    }
-                }
-                else
-                {
-                    SPDLOG_LOGGER_WARN(mLogger,
-                          "Failed to find stream {} for active subscriber {}",
-                          streamIndex->first, std::to_string(contextAddress));
-                }
+                streams.push_back(streamIndex->second.get());
+            }
+        }
+        }
+        std::vector<UDataPacketServiceAPI::V1::Packet> result;
+        result.reserve(streams.size());
+        for (auto *stream : streams)
+        {
+            auto packet = stream->getNextPacket(contextAddress);
+            if (packet)
+            {
+                result.push_back(std::move(*packet));
             }
         }
         return result;
@@ -349,74 +298,40 @@ public:
     void unsubscribeFromAll(uintptr_t contextAddress)
     {
         bool wasUnsubscribed{false};
-        // Pop from the pending fine-grained requests
+        // Purge the bookkeeping and collect the streams under the lock
+        std::vector<Stream *> streams;
         {
         const std::lock_guard<std::mutex> lock(mMutex);
-        size_t erased = mPendingSubscriptionRequests.unsafe_erase(contextAddress);
-        if (erased == 1){wasUnsubscribed = true;}
-        // Pop from the pending subscribe to all requests
-        erased = mPendingSubscribeToAllRequests.unsafe_erase(contextAddress);
-        if (erased == 1){wasUnsubscribed = true;}
+        if (mPendingSubscriptionRequests.erase(contextAddress) == 1)
+        {
+            wasUnsubscribed = true;
         }
-        // Pop from the active subscriptions 
-        bool purgedFromActiveSubscriptions{false};
+        if (mPendingSubscribeToAllRequests.erase(contextAddress) == 1)
+        {
+            wasUnsubscribed = true;
+        }
+        if (mActiveSubscriptionsMap.erase(contextAddress) == 1)
+        {
+            wasUnsubscribed = true;
+        }
+        mNumberOfSubscribers = -1; // Reset for getNumberOfSubscribers()
+        // Unsubscribe from every stream, not just the active ones, in case
+        // the bookkeeping ever drifts from the streams' subscriber maps
+        streams.reserve(mStreamsMap.size());
         for (auto &stream : mStreamsMap)
+        {
+            streams.push_back(stream.second.get());
+        }
+        }
+        // Then do the stream-by-stream work outside the manager lock
+        for (auto *stream : streams)
         {
             try
             {
-                auto unsubscribeResponse
-                    = stream.second->unsubscribe(contextAddress);
-                if (unsubscribeResponse ==
+                if (stream->unsubscribe(contextAddress) ==
                     Stream::UnsubscribeResponse::Unsubscribed)
                 {
                     wasUnsubscribed = true;
-                    if (!purgedFromActiveSubscriptions)
-                    {   
-                        {
-                        const std::lock_guard<std::mutex> lock(mMutex);
-                        mActiveSubscriptionsMap.unsafe_erase(contextAddress);
-                        }
-                        purgedFromActiveSubscriptions = true; 
-                    }   
-                }
-                else if (unsubscribeResponse ==
-                         Stream::UnsubscribeResponse::NeverSubscribed)
-                {
-                    // The lock-guard above ensures we this context was purged
-                    // from the pending subscriptions.  So that this was never
-                    // subscribed is okay.
-                    if (mActiveSubscriptionsMap.contains(contextAddress))
-                    {
-                        SPDLOG_LOGGER_WARN(mLogger,
-                          "{}'s subscription to {} noted as actived but {} not subscribed to stream", 
-                            std::to_string(contextAddress),
-                            stream.first,
-                            std::to_string(contextAddress)
-                            );
-                        {
-                        const std::lock_guard<std::mutex> lock(mMutex);
-                        mActiveSubscriptionsMap.unsafe_erase(contextAddress);
-                        }
-                        purgedFromActiveSubscriptions = true; 
-                    }
-#ifndef NDEBUG
-                    SPDLOG_LOGGER_DEBUG(mLogger,
-                                        "{} was never subscribed to {}",
-                                        std::to_string(contextAddress),
-                                        stream.first);
-#endif
-                }
-                else if (unsubscribeResponse ==
-                         Stream::UnsubscribeResponse::NotUnsubscribed)
-                {
-                    SPDLOG_LOGGER_WARN(mLogger,
-                                       "Did not unsubscribe {} from {}",
-                                        std::to_string(contextAddress),
-                                        stream.first);
-                }
-                else
-                {
-                    SPDLOG_LOGGER_ERROR(mLogger, "Unhandled case");
                 }
             }
             catch (const std::exception &e)
@@ -424,19 +339,14 @@ public:
                 SPDLOG_LOGGER_WARN(mLogger,
                                   "Failed to unsubscribe {} from {} because {}",
                                   std::to_string(contextAddress),
-                                  stream.first,
+                                  stream->getIdentifier(),
                                   std::string {e.what()});
             }
-        }
-        // Signal update number of subscribers 
-        {
-        const std::lock_guard<std::mutex> lock(mMutex);
-        mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
         }
         if (wasUnsubscribed)
         {
             SPDLOG_LOGGER_DEBUG(mLogger,
-                                "{} was unsubscribed from all", 
+                                "{} was unsubscribed from all",
                                 std::to_string(contextAddress));
         }
         else
@@ -472,28 +382,6 @@ public:
         mNumberOfSubscribers = static_cast<int> (allSubscribers.size());
         return mNumberOfSubscribers;
         }
-        /* 
-        if (mNumberOfSubscribers < 0)
-        {
-            std::set<uintptr_t> allSubscribers;
-            for (const auto &stream : mStreamsMap)
-            {
-                auto subscribers = stream.second->getSubscribers();
-                allSubscribers.insert(subscribers.begin(), subscribers.end());
-            }
-            if (allSubscribers.empty())
-            {
-                mNumberOfSubscribers
-                   = mPendingSubscriptionRequests.size()
-                   + mPendingSubscribeToAllRequests.size();
-            }
-            else
-            {
-                mNumberOfSubscribers = static_cast<int> (allSubscribers.size());
-            }
-        }
-        */
-        return mNumberOfSubscribers;
     }
 
     void unsubscribeAll()
@@ -522,42 +410,35 @@ public:
         }
     }
 
+    /// Caller must hold mMutex
     void addToActiveSubscriptionsMap(uintptr_t contextAddress,
                                      const std::string &streamIdentifier)
     {
-        if (mActiveSubscriptionsMap.contains(contextAddress))
-        {
-            mActiveSubscriptionsMap[contextAddress].insert(streamIdentifier);
-        }
-        else
-        {
-            std::set<std::string> newSet{streamIdentifier};
-            mActiveSubscriptionsMap[contextAddress] = std::move(newSet);
-        }
+        mActiveSubscriptionsMap[contextAddress].insert(streamIdentifier);
     }
 //private:
     SubscriptionManagerOptions mOptions;
     std::shared_ptr<spdlog::logger> mLogger{nullptr};
+    // mMutex guards the four containers and the subscriber count below.
+    // Locking order is manager then stream; a Stream method must never
+    // call back into this class.
     mutable std::mutex mMutex;
-    oneapi::tbb::concurrent_map
+    std::map
     <
         std::string,            // Stream identifier
-        std::unique_ptr<Stream> // Stream
+        std::unique_ptr<Stream> // Stream (never removed; stable address)
     > mStreamsMap;
-    oneapi::tbb::concurrent_map
+    std::map
     <
         uintptr_t,            // Context identifier
         std::set<std::string> // Stream identifiers
     > mActiveSubscriptionsMap;
-    oneapi::tbb::concurrent_map
+    std::map
     <
-        uintptr_t, //T *, //grpc::CallbackServerContext *,
+        uintptr_t,
         std::set<std::string>
     > mPendingSubscriptionRequests;
-    oneapi::tbb::concurrent_set
-    <
-        uintptr_t //T * //grpc::CallbackServerContext *
-    > mPendingSubscribeToAllRequests;
+    std::set<uintptr_t> mPendingSubscribeToAllRequests;
     StreamOptions mStreamOptions;
     mutable int mNumberOfSubscribers{-1};
 };

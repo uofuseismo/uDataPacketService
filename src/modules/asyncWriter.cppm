@@ -1,16 +1,26 @@
 module;
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <exception>
+#include <memory>
+#include <optional>
 #include <queue>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/status.h>
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/serverOptions.hpp"
@@ -132,8 +142,8 @@ public:
         mContext(context),
         mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
         mOptions(serverOptions),
-        mSubscriptionManager(subscriptionManager),
-        mLogger(logger),
+        mSubscriptionManager(std::move(subscriptionManager)),
+        mLogger(std::move(logger)),
         mKeepRunning(keepRunning)
     {
         mPeer = mContext->peer();
@@ -154,11 +164,12 @@ public:
             if (!validateSubscriber(mContext, accessToken))
             {
                 SPDLOG_LOGGER_INFO(mLogger, "Rejected {}", mPeer);
-                grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
+                const grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
 R"""(
 Subscriber must provide access token in x-custom-auth-token header field.
 )"""};
                 Finish(status);
+                return;
             }
             else
             {
@@ -178,9 +189,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
             SPDLOG_LOGGER_WARN(mLogger,
                 "Subscribe RPC rejecting {} because max number of subscribers hit",
                  mPeer);
-            grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+            const grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 "Max subscribers hit - try again later"};
             Finish(status);
+            return;
        }
 
         // Allow client to subscribe
@@ -188,9 +200,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
         {
             if (request->selections().empty())
             {
-                grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+                const grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
                                     "No streams specified - check your selections."};
                 Finish(status);
+                return;
             }
             std::vector<UDataPacketServiceAPI::V1::StreamIdentifier>
                 streamSelections;
@@ -204,9 +217,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
                 }
                 catch (...)
                 {
-                    grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+                    const grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
                                         "Invalid selection format.  A network, station, and channel is required"}; 
                     Finish(status);
+                    return;
                 }
                 if (!existingIdentifiers.contains(name))
                 {
@@ -220,15 +234,16 @@ Subscriber must provide access token in x-custom-auth-token header field.
             if (streamSelections.empty())
             {
                 SPDLOG_LOGGER_WARN(mLogger, "Could not create streams");
-                grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
+                const grpc::Status status{grpc::StatusCode::INVALID_ARGUMENT,
                        "No streams created.  Verify your stream selections."};
                 Finish(status);
+                return;
             }
             SPDLOG_LOGGER_INFO(mLogger,
                                "Subscribing {} to {} streams",
                                mPeer, streamSelections.size());
             mSubscriptionManager->subscribe(mContextAddress, streamSelections);
-            mSubscribed = true;
+            mSubscribed.store(true);
             auto nSubscribers = mSubscriptionManager->getNumberOfSubscribers();
             auto utilization
                 = static_cast<double> (nSubscribers)
@@ -245,6 +260,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
                                mPeer, std::string {e.what()});
             Finish(grpc::Status(grpc::StatusCode::INTERNAL,
                                 "Failed to subscribe"));
+            return;
         }
         // Start
         SPDLOG_LOGGER_DEBUG(mLogger, "Subscribe RPC for {} is starting",
@@ -267,7 +283,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
                                        "Unexpected failure"));
         }
         // Packet is flushed; can now safely purge the element to write
-        mWriteInProgress = false;
+        mWriteInProgress.store(false, std::memory_order_seq_cst);
         mPacketsQueue.pop();
         // Start next write
         nextWrite();
@@ -278,10 +294,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
     // subscription manager..
     void OnDone() override
     {
-        if (mSubscribed)
+        if (mSubscribed.load())
         {
             mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-            mSubscribed = false;
+            mSubscribed.store(false);
         }
         auto maximumNumberOfSubscribers
             = mOptions.getMaximumNumberOfSubscribers();
@@ -302,10 +318,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
         SPDLOG_LOGGER_INFO(mLogger,
                            "Subscribe RPC cancelled for {}.",
                            mPeer);
-        if (mSubscribed)
+        if (mSubscribed.load())
         {
             mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-            mSubscribed = false;
+            mSubscribed.store(false);
         }
     }
 
@@ -325,10 +341,11 @@ Subscriber must provide access token in x-custom-auth-token header field.
             if (mContext->IsCancelled()){break;}
 
             // Get any remaining packets on the queue on the wire
-            if (!mPacketsQueue.empty() && !mWriteInProgress)
+            if (!mPacketsQueue.empty() &&
+                !mWriteInProgress.load(std::memory_order_seq_cst))
             {
                 const auto &packet = mPacketsQueue.front();
-                mWriteInProgress = true;
+                mWriteInProgress.store(true, std::memory_order_seq_cst);
                 mMetrics.incrementSentPacketsCounter();
                 StartWrite(&packet);
                 return;
@@ -343,7 +360,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
                          = mSubscriptionManager->getPackets(mContextAddress);
                     for (auto &packet : packetsBuffer)
                     {
-                        bool allow{true};
+                        const bool allow{true}; // TODO check packet at some point?
 #ifndef NDEBUG
                         try
                         {
@@ -382,7 +399,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
 
             // No new packets were acquired and I'm not waiting for a write.
             // Give me stream manager a break.
-            if (mPacketsQueue.empty() && !mWriteInProgress)
+            if (mPacketsQueue.empty() && !mWriteInProgress.load(std::memory_order_seq_cst))
             {
                 std::this_thread::sleep_for(mTimeOut);
             }
@@ -392,10 +409,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
             // The context is still valid so try to remove it from the
             // subscriptions.  This can be the case whether the server is
             // shutting down or the client bailed.
-            if (mSubscribed)
+            if (mSubscribed.load())
             {
                 mSubscriptionManager->unsubscribeFromAll(mContextAddress);
-                mSubscribed = false;
+                mSubscribed.store(false);
             }
             if (mContext->IsCancelled())
             {
@@ -436,8 +453,8 @@ Subscriber must provide access token in x-custom-auth-token header field.
     size_t mMaximumQueueSize{2048};
     std::queue<UDataPacketServiceAPI::V1::Packet> mPacketsQueue;
     std::chrono::milliseconds mTimeOut{20};
-    bool mSubscribed{false};
-    bool mWriteInProgress{false};
+    std::atomic<bool> mSubscribed{false};
+    std::atomic<bool> mWriteInProgress{false};
     bool mCheckPackets{false};
 };
 
@@ -466,8 +483,8 @@ public:
         mContext(context),
         mContextAddress(reinterpret_cast<uintptr_t> (mContext)),
         mOptions(serverOptions),
-        mSubscriptionManager(subscriptionManager),
-        mLogger(logger),
+        mSubscriptionManager(std::move(subscriptionManager)),
+        mLogger(std::move(logger)),
         mKeepRunning(keepRunning)
     {   
         mPeer = mContext->peer();
@@ -488,11 +505,12 @@ public:
             if (!validateSubscriber(mContext, accessToken))
             {
                 SPDLOG_LOGGER_INFO(mLogger, "Rejected {}", mPeer);
-                grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
+                const grpc::Status status{grpc::StatusCode::UNAUTHENTICATED,
 R"""(
 Subscriber must provide access token in x-custom-auth-token header field.
 )"""};
                 Finish(status);
+                return;
             }
             else
             {
@@ -513,9 +531,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
             SPDLOG_LOGGER_WARN(mLogger,
                 "Subscribe to all RPC rejecting {} because max number of subscribers hit.",
                  mPeer);
-            grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
+            const grpc::Status status{grpc::StatusCode::RESOURCE_EXHAUSTED,
                                 "Max subscribers hit - try again later"};
             Finish(status);
+            return;
        }
 
         // Allow client to subscribe
@@ -542,6 +561,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
                                mPeer, std::string {e.what()});
             Finish(grpc::Status(grpc::StatusCode::INTERNAL,
                                 "Failed to subscribe"));
+            return;
         }
         // Start
         nextWrite();
@@ -637,7 +657,7 @@ Subscriber must provide access token in x-custom-auth-token header field.
                          = mSubscriptionManager->getPackets(mContextAddress);
                     for (auto &packet : packetsBuffer)
                     {
-                        bool allow{true};
+                        const bool allow{true}; // TODO actually check packets?
 #ifndef NDEBUG
                         try
                         {

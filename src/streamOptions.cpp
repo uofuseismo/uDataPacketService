@@ -1,3 +1,6 @@
+#include <memory>
+#include <stdexcept>
+#include <utility>
 #include "uDataPacketService/streamOptions.hpp"
 
 using namespace UDataPacketService;

@@ -1,0 +1,16 @@
+# ThreadSanitizer suppressions.
+#
+# The gRPC library at /usr/local/grpc is not built with TSan, so its internal
+# synchronization (completion queues, call combiners) is invisible to the
+# sanitizer and everything flowing through it is reported as a race.  Suppress
+# reports with gRPC frames in them.
+#
+# CAUTION: our reactor code (asyncWriter.cppm) runs on gRPC callback threads,
+# so real races there can carry grpc:: frames and be hidden by these entries.
+# For a fully rigorous run, rebuild gRPC itself with -fsanitize=thread and
+# delete this file.  Patterns are anchored globs: trailing * is required to
+# match a name prefix.
+race:grpc_core::*
+race:grpc::*
+race:grpc_*
+race:*cq_end_op_for_callback*

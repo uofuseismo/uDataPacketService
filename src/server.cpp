@@ -89,8 +89,11 @@ public:
 
         SPDLOG_LOGGER_INFO(mLogger, "Server listening at {}", address);
         mServer = builder.BuildAndStart();
+        mServerStarted.store(true);
+        // If stop() ran before the server came up then shut down immediately
+        if (!mKeepRunning.load()){mServer->Shutdown();}
         mServer->Wait();
-        mServerStarted = true;
+        mServerStarted.store(false);
     }
 
     /// Stop the service
@@ -102,25 +105,23 @@ public:
         // Forceably purge the remaning subscriptions
         mSubscriptionManager->unsubscribeAll();
         std::this_thread::sleep_for(std::chrono::milliseconds {15});
-        // Kill the server
-        if (mServer)
+        // Signal the server to shut down.  Do not destroy mServer here:
+        // the start() thread is still inside mServer->Wait() and Shutdown()
+        // is what unblocks it.  The server is destroyed with this class,
+        // after the start() future has been joined.
+        if (mServer && mServerStarted.load())
         {
-            if (mServerStarted) 
+            SPDLOG_LOGGER_INFO(mLogger, "Shutting down service");
+            constexpr int64_t timeOutSeconds{1};
+            constexpr int64_t timeOutNanoSeconds{0};
+            const gpr_timespec deadline // NOLINT
             {
-                SPDLOG_LOGGER_INFO(mLogger, "Shutting down service");
-                constexpr int64_t timeOutSeconds{1};
-                constexpr int64_t timeOutNanoSeconds{0};
-                const gpr_timespec deadline // NOLINT
-                {
-                    timeOutSeconds,
-                    timeOutNanoSeconds,
-                    GPR_TIMESPAN // NOLINT
-                };
-                mServer->Shutdown(deadline);
-            }
-            mServer = nullptr;
+                timeOutSeconds,
+                timeOutNanoSeconds,
+                GPR_TIMESPAN // NOLINT
+            };
+            mServer->Shutdown(deadline);
         }
-        mServerStarted = false;
     }
 
     /// Subscribes to specific streams
@@ -172,8 +173,8 @@ public:
     std::shared_ptr<SubscriptionManager> mSubscriptionManager{nullptr};
     std::unique_ptr<grpc::Server> mServer{nullptr};
     std::atomic<bool> mKeepRunning{true};
-    bool mSecureConnection{false};  
-    bool mServerStarted{false};
+    std::atomic<bool> mServerStarted{false};
+    bool mSecureConnection{false};
 };
 
 /// Constructor
