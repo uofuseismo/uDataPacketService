@@ -1,4 +1,4 @@
-name: prepare-environment
+name: prepare-package-environment
 description: Prepares the deploy environment
 runs:
   using: "composite"

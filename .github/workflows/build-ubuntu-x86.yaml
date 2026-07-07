@@ -60,8 +60,8 @@ jobs:
           echo "[conf]" >> ~/.conan2/profiles/default
           echo "tools.cmake.cmaketoolchain:generator=Ninja" >> ~/.conan2/profiles/default
 
-      - name: Prepare environment
-        uses: ./.github/actions/prepare-environment
+      - name: Prepare the build environment
+        uses: ./.github/actions/prepare-build-environment
 
       - name: Install Conan dependencies
         working-directory: ${{github.workspace}}

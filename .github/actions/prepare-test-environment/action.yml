@@ -1,4 +1,4 @@
-name: prepare-environment
+name: prepare-test-environment
 description: Prepares the test environment
 runs:
   using: "composite"
