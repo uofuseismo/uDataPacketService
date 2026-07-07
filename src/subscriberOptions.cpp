@@ -1,6 +1,11 @@
-#include <vector>
 #include <algorithm>
 #include <chrono>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <utility>
 #include "uDataPacketService/subscriberOptions.hpp"
 #include "uDataPacketService/grpcClientOptions.hpp"
 
