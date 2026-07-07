@@ -2,13 +2,13 @@ from conan import ConanFile
 from conan.tools.build import can_run
 from conan.tools.cmake import cmake_layout, CMake, CMakeDeps, CMakeToolchain
 
-class uFilterPickerConan(ConanFile):
+class uDataPacketServiceConan(ConanFile):
    name = "uDataPacketService"
    #version = "0.0.1"
    license = "MIT"
    description = "This is a highly-available utility that serves seismic data packets acquired in real-time to interested parties in the UUSS K8s cluster."
    url = "https://github.com/uofuseismo/uDataPacketService"
-   #topics = ("uFilterPicker")
+   #topics = ("uDataPacketService")
    settings = "os", "compiler", "build_type", "arch"
    options = {"build_tests" : [True, False],
               "build_training" : [True, False],
@@ -64,5 +64,5 @@ class uFilterPickerConan(ConanFile):
        cmake.install()
 
    def package_info(self):
-       self.cpp_info.libs = ["uFilterPicker"]
+       self.cpp_info.libs = ["uDataPacketService"]
 
