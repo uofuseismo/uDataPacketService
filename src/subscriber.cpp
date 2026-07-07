@@ -1,18 +1,33 @@
-#include <mutex>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <exception>
+#include <functional>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <stdexcept>
+#include <utility>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <spdlog/spdlog.h>
-#include <grpc/grpc.h>
+#include <spdlog/logger.h>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/support/client_callback.h>
+#include <grpcpp/support/config.h>
+#include <grpcpp/support/status.h>
+#include <grpcpp/support/string_ref.h>
+#include <grpcpp/security/credentials.h>
+#include <grpcpp/security/auth_context.h>
 #include "uDataPacketService/subscriber.hpp"
 #include "uDataPacketService/grpcClientOptions.hpp"
 #include "uDataPacketService/subscriberOptions.hpp"
 #include "uDataPacketImportAPI/v1/packet.pb.h"
 #include "uDataPacketImportAPI/v1/backend.grpc.pb.h"
-#include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketImportAPI/v1/packet.pb.h"
+#include "uDataPacketImportAPI/v1/subscription_request.pb.h"
 
 using namespace UDataPacketService;
 
@@ -98,7 +113,7 @@ public:
     ) :
         mRequest(request),
         mAddPacketCallback(addPacketCallback),
-        mLogger(logger),
+        mLogger(std::move(logger)),
         mKeepRunning(keepRunning)
     {
         mClientContext.set_wait_for_ready(false); // Fail immediately if server isn't there
@@ -114,7 +129,7 @@ public:
             mHadSuccessfulRead = true;
             try
             {
-                auto copy = mPacket;
+                UDataPacketImportAPI::V1::Packet copy{mPacket};
                 mAddPacketCallback(std::move(copy));
             }
             catch (const std::exception &e)
@@ -228,7 +243,7 @@ public:
                    std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
         mAddPacketCallback(callback),
-        mLogger(logger)
+        mLogger(std::move(logger))
     {
     }
                    
@@ -360,7 +375,8 @@ Subscriber::Subscriber
     const std::function<void (UDataPacketImportAPI::V1::Packet &&)> &callback,
     std::shared_ptr<spdlog::logger> logger
 ) :
-    pImpl(std::make_unique<SubscriberImpl> (options, callback, logger))
+    pImpl(std::make_unique<SubscriberImpl> (options, callback,
+                                            std::move(logger)))
 {
 }
 

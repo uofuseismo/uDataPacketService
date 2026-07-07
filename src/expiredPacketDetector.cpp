@@ -1,14 +1,11 @@
-#include <iostream>
-#include <string>
 #include <chrono>
-#include <mutex>
-#include <set>
+#include <memory>
+#include <stdexcept>
+#include <utility>
 #include <google/protobuf/util/time_util.h>
 #include "uDataPacketService/expiredPacketDetector.hpp"
-#include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
+#include "uDataPacketService/utilities.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
-
-import Utilities;
 
 using namespace UDataPacketService;
 
@@ -93,7 +90,7 @@ public:
         auto startTimeMuSec
             = google::protobuf::util::TimeUtil::TimestampToMicroseconds(
                  packet.start_time());
-        std::chrono::microseconds packetStartTime{startTimeMuSec};
+        const std::chrono::microseconds packetStartTime{startTimeMuSec};
         auto nowMuSeconds = Utilities::getNow<std::chrono::microseconds> ();
         auto earliestTime = nowMuSeconds - mMaxExpiredTime;
         // Packet contains data before the earliest allowable time

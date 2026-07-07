@@ -4,7 +4,9 @@ enable_testing()
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
 option(BUILD_CONTAINER "Build container for deployment" OFF)
+option(WITH_CONAN "Build using Conan" OFF)
 option(BUILD_TESTS "Compile unit tests" ON) 
+option(USE_CLANG_TIDY "Build using clang-tidy" OFF)
 include(GenerateExportHeader)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
@@ -14,17 +16,36 @@ endif()
 if (NOT ${BUILD_SHARED_LIBS})
    set(Boost_USE_STATIC_LIBS ON) 
 endif()
-find_package(absl CONFIG REQUIRED)
+#find_package(absl CONFIG REQUIRED)
 #find_package(utf8_range CONFIG REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
-find_package(opentelemetry-cpp REQUIRED)
+if (${WITH_CONAN})
+   message("Will use Conan OTLP exporters")
+   find_package(opentelemetry-cpp CONFIG COMPONENTS exporter_otlp_grpc exporters_otlp_http REQUIRED)
+else()
+   find_package(opentelemetry-cpp CONFIG COMPONENTS exporters_otlp_http REQUIRED)
+endif()
 find_package(spdlog REQUIRED)
 find_package(Boost REQUIRED headers program_options REQUIRED)
 find_package(TBB COMPONENTS tbb REQUIRED)
 find_package(Threads REQUIRED)
 if (BUILD_TESTS)
    find_package(Catch2 3 REQUIRED)
+endif()
+
+if (${USE_CLANG_TIDY} AND PROJECT_IS_TOP_LEVEL)
+   message("Looking for clang-tidy")
+   find_program(CLANG_TIDY_EXECUTABLE NAMES "clang-tidy")
+   if (CLANG_TIDY_EXECUTABLE)
+      message("Using clang-tidy  ${CLANG_TIDY_EXECUTABLE}")
+      set(CMAKE_C_CLANG_TIDY   ${CLANG_TIDY_EXECUTABLE} -p ${CMAKE_BINARY_DIR})
+      set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_EXECUTABLE} -p ${CMAKE_BINARY_DIR})
+      #set(CLANG_TIDY_COMMAND ${CLANG_TIDY_EXECUTABLE} "-config=${CMAKE_SOURCE_DIR}/.clang-tidy")
+      set(CMAKE_EXPORT_COMPILE_COMMANDS ON) 
+   else()
+      message("clang-tidy not found")
+   endif()
 endif()
 
 find_package(Git)
@@ -74,6 +95,7 @@ set(LIBRARY_SRC
     src/subscriberOptions.cpp
     src/subscriptionManager.cpp
     src/subscriptionManagerOptions.cpp
+    src/utilities.cpp
     src/version.cpp
     ${IMPORT_PROTO_SRC}
     ${EXPORT_PROTO_SRC}
@@ -91,6 +113,7 @@ set(HEADER_FILES
     include/uDataPacketService/subscriberOptions.hpp 
     include/uDataPacketService/subscriptionManager.hpp
     include/uDataPacketService/subscriptionManagerOptions.hpp
+    include/uDataPacketService/utilities.hpp
     include/uDataPacketService/version.hpp)
 set(MODULE_FILES
     src/modules/programOptions.cppm
@@ -98,7 +121,7 @@ set(MODULE_FILES
     src/modules/logger.cppm
     src/modules/metrics.cppm
     src/modules/otelSpdlogSink.cppm
-    src/modules/utilities.cppm
+    #src/modules/utilities.cppm
     src/modules/asyncWriter.cppm
     #src/modules/server.cppm
     )
@@ -143,13 +166,19 @@ target_sources(libuDataPacketService
                )
 protobuf_generate(TARGET libuDataPacketService
                   LANGUAGE cpp
+                  OUT_VAR PROTO_GENERATED_CXX_FILES
                  )
 protobuf_generate(TARGET libuDataPacketService
                   LANGUAGE grpc
                   PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>"
                   PLUGIN_OPTIONS generate_mock_code=true
                   GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+                  OUT_VAR PROTO_GENERATED_FILES
                  )
+set_source_files_properties(${PROTO_GENERATED_FILES} ${PROTO_GENERATED_CXX_FILES}
+   PROPERTIES
+      SKIP_LINTING ON
+)
 
 add_executable(uDataPacketService
                src/main.cpp)

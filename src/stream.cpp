@@ -1,21 +1,25 @@
+#include <cstddef>
+#include <cstdint>
+#include <cmath>
 #include <mutex>
 #include <memory>
-#include <algorithm>
+#include <optional>
 #include <queue>
-#include <cmath>
+#include <set>
+#include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
 #include <oneapi/tbb/concurrent_map.h>
-#include <google/protobuf/util/time_util.h>
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
+#include "uDataPacketService/utilities.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
-#include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
-
-import Utilities;
 
 using namespace UDataPacketService;
 
@@ -27,7 +31,7 @@ public:
                const StreamOptions &options,
                std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
-        mLogger(logger),
+        mLogger(std::move(logger)),
         mMaximumQueueSize(mOptions.getMaximumQueueSize())
     {   
         mStreamIdentifier = Utilities::toName(packet);
@@ -57,7 +61,7 @@ public:
         }
         // Set the next packets
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         mMostRecentPacket = std::move(packet);
         mHaveMostRecentPacket = true;
         for (auto &it : mSubscribersMap)
@@ -154,9 +158,9 @@ public:
         size_t newSize{0};
         bool wasUnsubscribed{false};
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         originalSize = mSubscribersMap.size();
-        size_t exists = mSubscribersMap.unsafe_erase(contextAddress);
+        const size_t exists = mSubscribersMap.unsafe_erase(contextAddress);
         newSize = mSubscribersMap.size();
         if (exists == 1)
         {
@@ -207,7 +211,7 @@ public:
     void unsubscribeAll()
     {
         {
-        std::lock_guard<std::mutex> lock(mMutex);        
+        const std::lock_guard<std::mutex> lock(mMutex);        
         mSubscribersMap.clear();
         }
     }
@@ -222,7 +226,7 @@ public:
     /// The number of subscribers.
     int getNumberOfSubscribers() const noexcept
     {   
-        return mSubscribersMap.size();
+        return static_cast<int> (mSubscribersMap.size());
     }   
 
     /// The current subscribers.
@@ -272,7 +276,9 @@ Stream::Stream(UDataPacketServiceAPI::V1::Packet &&packet,
 Stream::Stream(UDataPacketServiceAPI::V1::Packet &&packet,
                const StreamOptions &options,
                std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<StreamImpl> (std::move(packet), options, logger))
+    pImpl(std::make_unique<StreamImpl> (std::move(packet),
+                                        options,
+                                        std::move(logger)))
 {
 }
 

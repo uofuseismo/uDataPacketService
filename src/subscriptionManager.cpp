@@ -1,23 +1,30 @@
+#include <chrono>
+#include <cstdint>
+#include <cstddef>
+#include <exception>
+#include <memory>
 #include <mutex>
-#include <string>
 #include <set>
-#include <algorithm>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <spdlog/spdlog.h>
+#include <spdlog/logger.h>
 #include <oneapi/tbb/concurrent_map.h>
 #include <oneapi/tbb/concurrent_set.h>
-#include <grpcpp/server.h>
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
+#include "uDataPacketService/utilities.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
 #include "uDataPacketServiceAPI/v1/data_type.pb.h"
-
-import Utilities;
 
 using namespace UDataPacketService;
 
@@ -27,7 +34,7 @@ public:
     SubscriptionManagerImpl(const SubscriptionManagerOptions &options,
                             std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
-        mLogger(logger),
+        mLogger(std::move(logger)),
         mStreamOptions(mOptions.getStreamOptions())
     {
     }
@@ -134,7 +141,7 @@ public:
                                         "All pending subscriptions filled for {}",
                                         std::to_string {it->first});
                     {
-                    std::lock_guard<std::mutex> lock(mMutex);
+                    const std::lock_guard<std::mutex> lock(mMutex);
                     mPendingSubscriptionRequests.unsafe_erase(it++);
                     }
                 }
@@ -230,7 +237,7 @@ public:
         } // Loop on desired streams
         // Update number of subscribers 
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
         }
     }
@@ -291,7 +298,7 @@ public:
         mPendingSubscribeToAllRequests.insert(contextAddress);
         // Signal update number of subscribers 
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
         }
     }
@@ -344,7 +351,7 @@ public:
         bool wasUnsubscribed{false};
         // Pop from the pending fine-grained requests
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         size_t erased = mPendingSubscriptionRequests.unsafe_erase(contextAddress);
         if (erased == 1){wasUnsubscribed = true;}
         // Pop from the pending subscribe to all requests
@@ -366,7 +373,7 @@ public:
                     if (!purgedFromActiveSubscriptions)
                     {   
                         {
-                        std::lock_guard<std::mutex> lock(mMutex);
+                        const std::lock_guard<std::mutex> lock(mMutex);
                         mActiveSubscriptionsMap.unsafe_erase(contextAddress);
                         }
                         purgedFromActiveSubscriptions = true; 
@@ -387,7 +394,7 @@ public:
                             std::to_string(contextAddress)
                             );
                         {
-                        std::lock_guard<std::mutex> lock(mMutex);
+                        const std::lock_guard<std::mutex> lock(mMutex);
                         mActiveSubscriptionsMap.unsafe_erase(contextAddress);
                         }
                         purgedFromActiveSubscriptions = true; 
@@ -423,7 +430,7 @@ public:
         }
         // Signal update number of subscribers 
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         mNumberOfSubscribers =-1; // Reset for getNumberOfSubscribers()
         }
         if (wasUnsubscribed)
@@ -444,7 +451,7 @@ public:
     [[nodiscard]] int getNumberOfSubscribers() const noexcept
     {
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         // Early return?
         if (mNumberOfSubscribers >= 0){return mNumberOfSubscribers;}
         std::set<uintptr_t> allSubscribers;
@@ -493,7 +500,7 @@ public:
     {
         // Do not let these get filled while I'm clearing
         {
-        std::lock_guard<std::mutex> lock(mMutex);
+        const std::lock_guard<std::mutex> lock(mMutex);
         mNumberOfSubscribers =-1;
         mPendingSubscriptionRequests.clear();
         mPendingSubscribeToAllRequests.clear();
@@ -558,7 +565,8 @@ public:
 SubscriptionManager::SubscriptionManager(
     const SubscriptionManagerOptions &options,
     std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<SubscriptionManagerImpl> (options, logger))
+    pImpl(std::make_unique<SubscriptionManagerImpl> (options,
+                                                     std::move(logger)))
 {
 }
 

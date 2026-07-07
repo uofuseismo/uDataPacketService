@@ -17,6 +17,7 @@ module;
 #include "uDataPacketService/grpcServerOptions.hpp"
 #include "uDataPacketService/stream.hpp"
 #include "uDataPacketService/streamOptions.hpp"
+#include "uDataPacketService/utilities.hpp"
 #include "uDataPacketServiceAPI/v1/broadcast.grpc.pb.h"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
 #include "uDataPacketServiceAPI/v1/stream_identifier.pb.h"
@@ -25,7 +26,6 @@ module;
 
 
 export module AsyncWriter;
-import Utilities;
 import Metrics;
 
 namespace

@@ -67,6 +67,31 @@ UDataPacketServiceAPI::V1::Packet convert(
 {
     UDataPacketServiceAPI::V1::Packet result;
 
+    // Quick/easy checks
+    if (!input.has_stream_identifier())
+    {
+        throw std::invalid_argument("No stream identifier set on input packet");
+    }
+    if (!input.has_start_time())
+    {
+        throw std::invalid_argument("Start time not set on input packet");
+    }
+    if (!input.has_sampling_rate())
+    {
+        throw std::invalid_argument("Sampling rate not set on input packet");
+    }
+    if (!input.has_number_of_samples())
+    {
+        throw std::invalid_argument("Number of samples set on input packet");
+    }
+    if (!input.has_data_type())
+    {
+        throw std::invalid_argument("Data type not set on input packet");
+    }
+    if (!input.has_data())
+    {
+        throw std::invalid_argument("Data not set on input packet");
+    }
     // Packet identifier
     //*result.mutable_stream_identifier()  
     //    = convert(input.stream_identifier());

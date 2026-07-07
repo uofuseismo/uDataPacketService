@@ -1,23 +1,32 @@
 import ProgramOptions;
 import Logger;
 import Metrics;
-import Utilities;
 //import Server;
 import PacketConverter;
 
+#include <stdlib.h>
 #include <iostream>
-#include <csignal>
-#include <filesystem>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
+#include <csignal>
+#include <cstdint>
+#include <cstdlib>
+#include <exception>
+#include <filesystem>
+#include <functional>
+#include <future>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <thread>
+#include <utility>
 #ifndef NDEBUG
 #include <cassert>
 #endif
 #include <opentelemetry/metrics/meter_provider.h>
 #include <opentelemetry/metrics/provider.h>
-#include <absl/log/initialize.h>
+//#include <absl/log/initialize.h>
 #include <oneapi/tbb/concurrent_queue.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -27,10 +36,12 @@ import PacketConverter;
 #include "uDataPacketService/serverOptions.hpp"
 #include "uDataPacketService/subscriber.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
+#include "uDataPacketService/utilities.hpp"
 #include "uDataPacketService/version.hpp"
 
 namespace
 {   
+volatile std::sig_atomic_t mSignalStatus;
 std::atomic<bool> mInterrupted{false};
 
 opentelemetry::nostd::shared_ptr<opentelemetry::metrics::ObservableInstrument>
@@ -47,7 +58,7 @@ public:
     Process(const UDataPacketService::ProgramOptions &options,
             std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
-        mLogger(logger)
+        mLogger(std::move(logger))
     {
 #ifndef NDEBUG
         assert(mLogger != nullptr);
@@ -230,7 +241,7 @@ public:
             auto nSubscribers = mService->getNumberOfSubscribers();
             if (mOptions.exportMetrics)
             {
-                int64_t currentNumberOfPacketsReceived
+                const int64_t currentNumberOfPacketsReceived
                     = metrics.getReceivedPacketsCount();
                 auto reportPacketsReceived = currentNumberOfPacketsReceived
                                            - mReportNumberOfPacketsReceived;
@@ -318,6 +329,21 @@ public:
         }
     }
 
+
+    /// @brief Defines the signals we'll react to.
+    void catchSignals()
+    {   
+        std::signal(SIGINT,  Process::signalHandler);
+        std::signal(SIGTERM, Process::signalHandler);
+    }   
+
+    static void signalHandler(const int signal)
+    {   
+        mSignalStatus = signal;
+        mInterrupted.store(true);
+    }   
+
+/*
     /// Handles sigterm and sigint
     static void signalHandler(const int )
     {   
@@ -333,6 +359,7 @@ public:
         sigaction(SIGINT,  &action, NULL);
         sigaction(SIGTERM, &action, NULL);
     }   
+*/
 
 //private:
     UDataPacketService::ProgramOptions mOptions; 
@@ -407,7 +434,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (getenv("OTEL_SERVICE_NAME") == nullptr)
+    if (std::getenv("OTEL_SERVICE_NAME") == nullptr)
     {   
         constexpr int overwrite{1};
         setenv("OTEL_SERVICE_NAME",

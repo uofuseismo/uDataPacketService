@@ -1,7 +1,18 @@
 #include <atomic>
-#include <thread>
 #include <chrono>
+#include <cstdint>
+#include <future>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <thread>
+#include <utility>
+#include <spdlog/logger.h>
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/server_builder.h>
+#include <grpcpp/server_context.h>
+#include <grpcpp/security/server_credentials.h>
+#include <grpcpp/support/server_callback.h>
 #include <grpcpp/support/time.h> //NOLINT
 #include <spdlog/spdlog.h>
 #include "uDataPacketService/server.hpp"
@@ -9,6 +20,9 @@
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/grpcServerOptions.hpp"
 #include "uDataPacketServiceAPI/v1/broadcast.grpc.pb.h"
+#include "uDataPacketServiceAPI/v1/subscribe_to_all_request.pb.h"
+#include "uDataPacketServiceAPI/v1/subscription_request.pb.h"
+#include "uDataPacketServiceAPI/v1/packet.pb.h"
 
 import AsyncWriter;
 
@@ -22,7 +36,7 @@ public:
     ServerImpl(const ServerOptions &options,
                 std::shared_ptr<spdlog::logger> logger) :
         mOptions(options),
-        mLogger(logger)
+        mLogger(std::move(logger))
     {
         if (mLogger == nullptr){throw std::invalid_argument("Logger is null");}
         mSubscriptionManager
@@ -46,8 +60,10 @@ public:
         auto grpcOptions = mOptions.getGRPCOptions();
         auto address = makeAddress(grpcOptions);
         grpc::ServerBuilder builder;
-        if (grpcOptions.getServerKey() == std::nullopt ||
-            grpcOptions.getServerCertificate() == std::nullopt)
+        auto serverKey = grpcOptions.getServerKey();
+        auto serverCertificate = grpcOptions.getServerCertificate();
+        if (serverKey == std::nullopt ||
+            serverCertificate == std::nullopt)
         {
             SPDLOG_LOGGER_INFO(mLogger, "Initiating non-secured service");
             builder.AddListeningPort(address,
@@ -58,10 +74,10 @@ public:
         else
         {
             SPDLOG_LOGGER_INFO(mLogger, "Initiating secured service");
-            grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
+            const grpc::SslServerCredentialsOptions::PemKeyCertPair keyCertPair
             {   
-                *grpcOptions.getServerKey(),        // Private key
-                *grpcOptions.getServerCertificate() // Public key (cert chain)
+                *serverKey,        // Private key
+                *serverCertificate // Public key (cert chain)
             };  
             grpc::SslServerCredentialsOptions sslOptions; 
             sslOptions.pem_key_cert_pairs.emplace_back(keyCertPair);
@@ -163,7 +179,7 @@ public:
 /// Constructor
 Server::Server(const ServerOptions &options,
                std::shared_ptr<spdlog::logger> logger) :
-    pImpl(std::make_unique<ServerImpl> (options, logger))
+    pImpl(std::make_unique<ServerImpl> (options, std::move(logger)))
 {
 }
 

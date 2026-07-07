@@ -1,22 +1,20 @@
+#include <algorithm>
 #include <chrono>
-#include <vector>
+#include <cmath>
+#include <cstdint>
+#include <numeric>
 #include <string>
 #include <random>
-#include <cmath>
-#include <numeric>
+#include <vector>
 #include <google/protobuf/util/time_util.h>
 #include "uDataPacketService/expiredPacketDetector.hpp"
 #include "uDataPacketService/futurePacketDetector.hpp"
 #include "uDataPacketService/duplicatePacketDetector.hpp"
+#include "uDataPacketService/utilities.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
+#include "uDataPacketServiceAPI/v1/data_type.pb.h"
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/catch_template_test_macros.hpp>
-#include <catch2/catch_approx.hpp>
-#include <catch2/benchmark/catch_benchmark.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "utilities.hpp"
-
-import Utilities;
 
 using namespace UDataPacketService;
 
@@ -67,14 +65,14 @@ TEST_CASE("UDataPacketService::FuturePacketDetector", "[futureData]")
     *packet.mutable_stream_identifier() = identifier;
     constexpr double samplingRate{1}; // 1 sps helps with subsequet test on slow machine
     packet.set_sampling_rate(samplingRate);
-    std::vector<int> data{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    const std::vector<int> data{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     packet.set_data(::pack(data));
     packet.set_number_of_samples(data.size());
     packet.set_data_type(dataType);
     constexpr std::chrono::microseconds maxFutureTime{1000};
     FuturePacketDetectorOptions options;
     options.setMaxFutureTime(maxFutureTime);
-    FuturePacketDetector detector{options};
+    const FuturePacketDetector detector{options};
 
     SECTION("StartTime")
     {
@@ -85,7 +83,8 @@ TEST_CASE("UDataPacketService::FuturePacketDetector", "[futureData]")
         auto endTimeMuS = Utilities::getEndTimeInMicroSeconds(packet).count();
         auto referenceEndTimeMuS = startTime.count()
             + static_cast<int64_t>
-              (std::round( (data.size() - 1)/samplingRate*1000000 ));
+              (std::round( static_cast<double> (data.size() - 1)
+                          /samplingRate*1000000 ));
         REQUIRE(endTimeMuS == referenceEndTimeMuS);
     }
     SECTION("ValidData")
@@ -143,7 +142,7 @@ TEST_CASE("UDataPacketService::ExpiredPacketDetector", "[expiredData]")
     ExpiredPacketDetectorOptions options;
     options.setMaxExpiredTime(maxExpiredTime);
 
-    ExpiredPacketDetector detector{options};
+    const ExpiredPacketDetector detector{options};
     SECTION("ValidData")
     {
         auto now = std::chrono::high_resolution_clock::now();
@@ -194,7 +193,7 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
     namespace UV1 = UDataPacketServiceAPI::V1;
     constexpr auto dataType{UV1::DataType::DATA_TYPE_INTEGER_32};
     // Random packet sizes
-    std::random_device randomDevice;
+    const std::random_device randomDevice;
     std::mt19937 generator(188382);
     std::uniform_int_distribution<> uniformDistribution(250, 350);
 
@@ -226,15 +225,15 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
         DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
 
-        DuplicatePacketDetector detector{options};
+        const DuplicatePacketDetector detector{options};
         int cumulativeSamples{0}; 
-        int nExamples = 2*circularBufferSize;
+        const int nExamples = 2*circularBufferSize;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {
             auto packetStartTime = startTime 
                 + std::chrono::microseconds {static_cast<int64_t>
                       (std::round(cumulativeSamples/samplingRate*1000000))};
-            std::vector<int> data(uniformDistribution(generator), 0); 
+            const std::vector<int> data(uniformDistribution(generator), 0); 
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size()); 
             packet.set_number_of_samples(data.size());
@@ -254,15 +253,15 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
         DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
 
-        DuplicatePacketDetector detector{options};
+        const DuplicatePacketDetector detector{options};
         int cumulativeSamples{0}; 
-        int nExamples = 2*circularBufferSize;
+        const int nExamples = 2*circularBufferSize;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {
             auto packetStartTime = startTime 
                 + std::chrono::microseconds {static_cast<int64_t>
                       (std::round(cumulativeSamples/samplingRate*1000000))};
-            std::vector<int> data(uniformDistribution(generator), 0); 
+            const std::vector<int> data(uniformDistribution(generator), 0); 
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size()); 
             packet.set_number_of_samples(data.size());
@@ -283,7 +282,7 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
         DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
 
-        DuplicatePacketDetector detector{options};
+        const DuplicatePacketDetector detector{options};
 
         std::vector<UV1::Packet> packets;
         int cumulativeSamples{0};
@@ -292,7 +291,7 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
             auto packetStartTime = startTime 
                 + std::chrono::microseconds {static_cast<int64_t>
                       (std::round(cumulativeSamples/samplingRate*1000000))};
-            std::vector<int> data(uniformDistribution(generator), 0);
+            const std::vector<int> data(uniformDistribution(generator), 0);
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size());
             packet.set_number_of_samples(data.size());
@@ -319,18 +318,18 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
         DuplicatePacketDetectorOptions options;
         options.setCircularBufferSize(circularBufferSize);
 
-        DuplicatePacketDetector detector{options};
+        const DuplicatePacketDetector detector{options};
 
         int cumulativeSamples{0}; 
         // Load it
-        int nExamples = circularBufferSize;
+        const int nExamples = circularBufferSize;
         std::vector<UV1::Packet> packets;
         for (int iPacket = 0; iPacket < nExamples; iPacket++)
         {   
             auto packetStartTime = startTime 
                 + std::chrono::microseconds {static_cast<int64_t>
                       (std::round(cumulativeSamples/samplingRate*1000000))};
-            std::vector<int> data(uniformDistribution(generator), 0); 
+            const std::vector<int> data(uniformDistribution(generator), 0); 
             cumulativeSamples
                 = cumulativeSamples + static_cast<int> (data.size());
             packet.set_number_of_samples(data.size());
@@ -347,8 +346,8 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
         // Throw some timing slips in there
         auto firstPacket = packets.front();
         auto firstStartTimePerturbed
-               = google::protobuf::util::TimeUtil::TimestampToMicroseconds(
-                   firstPacket.start_time())*1.e-6
+               = static_cast<double> (google::protobuf::util::TimeUtil::TimestampToMicroseconds(
+                   firstPacket.start_time()))*1.e-6
                - (firstPacket.number_of_samples() - 1)
                 /firstPacket.sampling_rate()/2.0;
         auto firstStartTimePerturbedMuS
@@ -362,8 +361,8 @@ TEST_CASE("UDataPacketService::DuplicatePacketDetector", "[duplicateData]")
         {   
             auto thisPacket = packets.at(iPacket);
             auto thisStartTimePerturbed
-                = google::protobuf::util::TimeUtil::TimestampToMicroseconds(
-                     thisPacket.start_time())*1.e-6
+                = static_cast<double> (google::protobuf::util::TimeUtil::TimestampToMicroseconds(
+                     thisPacket.start_time()))*1.e-6
                    - (thisPacket.number_of_samples() - 1)
                      /thisPacket.sampling_rate()/2.0;
             auto thisStartTimePerturbedMuS

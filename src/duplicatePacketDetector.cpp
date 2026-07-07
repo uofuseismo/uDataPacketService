@@ -1,21 +1,24 @@
-#include <iostream>
-#include <mutex>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 #include <chrono>
+#include <cstdint>
+#include <exception>
 #include <map>
-#include <set>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #ifndef NDEBUG
 #include <cassert>
 #endif
-#include <boost/circular_buffer.hpp>
+#include <boost/circular_buffer.hpp> // NOLINT(misc-include-cleaner)
 #include <spdlog/spdlog.h>
 #include <google/protobuf/util/time_util.h>
 #include "uDataPacketService/duplicatePacketDetector.hpp"
+#include "uDataPacketService/utilities.hpp"
 #include "uDataPacketServiceAPI/v1/packet.pb.h"
-
-import Utilities;
 
 using namespace UDataPacketService;
 
@@ -93,7 +96,7 @@ public:
     std::chrono::microseconds endTime{0}; // UTC time of last sample
     // Typically `observed' sampling rates wobble around a nominal sampling rate
     int samplingRate{100};
-    int nSamples{0}; // Number of samples in packet
+    uint32_t nSamples{0}; // Number of samples in packet
 };
 
 [[nodiscard]] int estimateCapacity(const ::DataPacketHeader &header,
@@ -103,8 +106,9 @@ public:
         = std::max(0.0,
                    std::round( (header.nSamples - 1.)
                                /std::max(1, header.samplingRate)));
-    std::chrono::seconds packetDuration{static_cast<int> (duration)};
-    return std::max(10, static_cast<int> (1.5*memory.count()/duration)) + 1;
+    const std::chrono::seconds packetDuration{static_cast<int> (duration)};
+    auto dMemory = static_cast<double> (memory.count());
+    return std::max(10, static_cast<int> (1.5*dMemory/duration)) + 1;
 }
 
 }
@@ -229,6 +233,7 @@ public:
                        + header.name + " with capacity: "
                        + std::to_string(capacity));
 */
+            //NOLINTNEXTLINE(misc-include-cleaner)
             boost::circular_buffer<::DataPacketHeader>
                 newCircularBuffer(capacity);
             newCircularBuffer.push_back(header);
@@ -328,7 +333,7 @@ public:
     {
         if (&impl == this){return *this;}
         {
-        std::lock_guard<std::mutex> lockGuard(impl.mMutex);
+        const std::lock_guard<std::mutex> lockGuard(impl.mMutex);
         mCircularBuffers = impl.mCircularBuffers;
         }
         mCircularBufferDuration = impl.mCircularBufferDuration;
