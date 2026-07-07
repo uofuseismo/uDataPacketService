@@ -216,35 +216,21 @@ if (${WITH_CONAN})
                              opentelemetry-cpp::common
                              opentelemetry-cpp::api)
 else()
+    target_link_libraries(uDataPacketService
+                          PRIVATE
+                             opentelemetry-cpp::otlp_http_log_record_exporter
+                             opentelemetry-cpp::otlp_http_metric_exporter
+                             opentelemetry-cpp::logs
+                             opentelemetry-cpp::common
+                             opentelemetry-cpp::api)
+endif()
 target_link_libraries(uDataPacketService
                       PUBLIC
                          TBB::tbb
                       PRIVATE
                          uDataPacketService::libuDataPacketService
-                         gRPC::grpc
-                         gRPC::grpc++
-                         opentelemetry-cpp::otlp_http_log_record_exporter
-                         opentelemetry-cpp::otlp_http_metric_exporter
-                         spdlog::spdlog_header_only
-                         Boost::headers
-                         Boost::program_options
-                         Threads::Threads)
-
-#    target_link_libraries(uDataPacketService
-#                          PRIVATE
-#                             opentelemetry-cpp::otlp_http_log_record_exporter
-#                             opentelemetry-cpp::otlp_http_metric_exporter
-#                             opentelemetry-cpp::logs
-#                             opentelemetry-cpp::common
-#                             opentelemetry-cpp::api)
-endif()
-#target_link_libraries(uDataPacketService
-#                      PUBLIC
-#                         TBB::tbb
-#                      PRIVATE
-#                         uDataPacketService::libuDataPacketService
-#                         protobuf::libprotobuf gRPC::grpc  gRPC::grpc++
-#                         Boost::headers Boost::program_options Threads::Threads)
+                         protobuf::libprotobuf gRPC::grpc  gRPC::grpc++
+                         Boost::headers Boost::program_options Threads::Threads)
 
 ##########################################################################################
 #                                         Tests                                          #

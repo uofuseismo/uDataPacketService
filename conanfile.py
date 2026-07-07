@@ -35,7 +35,7 @@ class uDataPacketServiceConan(ConanFile):
 
    def build_requirements(self):
        # test dependencies and build tools
-       self.test_requires("catch2/3.13.0")
+       self.test_requires("catch2/3.14.0")
 
    def layout(self):
        # defines the project layout

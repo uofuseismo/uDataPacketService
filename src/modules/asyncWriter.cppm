@@ -21,6 +21,7 @@ module;
 #include <grpcpp/support/status.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/logger.h>
+#include "uDataPacketService/metricsSingleton.hpp"
 #include "uDataPacketService/subscriptionManager.hpp"
 #include "uDataPacketService/subscriptionManagerOptions.hpp"
 #include "uDataPacketService/serverOptions.hpp"
@@ -36,7 +37,6 @@ module;
 
 
 export module AsyncWriter;
-import Metrics;
 
 namespace
 {
