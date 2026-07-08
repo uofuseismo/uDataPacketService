@@ -110,7 +110,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [ubuntu-26.04]
+        distro: [ubuntu-24.04]
         arch: [x86]
         BUILD_TARGET: [Release]
     name: Package for ${{ matrix.distro }} ${{ matrix.arch }}
@@ -134,7 +134,7 @@ jobs:
           cpack -B artifacts TGZ
 
       - name: Build and push image
-        env: # Or as an environment variable
+        env:
           QUAY_ROBOT_PASSWORD: ${{ secrets.QUAY_ROBOT_PASSWORD }}
           QUAY_ROBOT_USER: ${{ secrets.QUAY_ROBOT_USER }}
         working-directory: ${{github.workspace}}
