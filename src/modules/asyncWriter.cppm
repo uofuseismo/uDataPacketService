@@ -315,10 +315,12 @@ Subscriber must provide access token in x-custom-auth-token header field.
         SPDLOG_LOGGER_INFO(mLogger,
                            "Subscribe RPC cancelled for {}.",
                            mPeer);
-        // Wake the pump: a pending alarm fires immediately with ok=false
-        // and a pending write completes with ok=false via OnWriteDone.
-        // Either way the pump sees the cancel and finishes up.
-        mAlarm.Cancel();
+        // Observation only: mAlarm belongs to the pump's serialized
+        // continuation chain and grpc::Alarm::Set/Cancel are not
+        // thread-safe, so we must not touch it here.  The cancel is
+        // picked up by the pump within one poll interval - a pending
+        // write completes with ok=false via OnWriteDone, or the armed
+        // alarm fires at its deadline and pump() sees IsCancelled().
     }
 
 #ifndef NDEBUG
@@ -409,9 +411,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
         }
 
         // Idle: hand the thread back; the alarm resumes the pump at the
-        // deadline (ok=true) or immediately on Cancel (ok=false).  While
-        // the stream stays quiet back off towards the maximum, which the
-        // options keep below the server shutdown deadline.
+        // deadline, so the interval also bounds how long a client cancel
+        // or server shutdown goes unnoticed.  While the stream stays
+        // quiet back off towards the maximum, which the options keep
+        // below the server shutdown deadline.
         const auto interval
             = std::min(mCurrentPollInterval, mMaximumPollInterval);
         mCurrentPollInterval = std::min(interval*2, mMaximumPollInterval);
@@ -609,10 +612,12 @@ Subscriber must provide access token in x-custom-auth-token header field.
         SPDLOG_LOGGER_INFO(mLogger,
                            "Subscribe to all RPC cancelled for {}.",
                            mPeer);
-        // Wake the pump: a pending alarm fires immediately with ok=false
-        // and a pending write completes with ok=false via OnWriteDone.
-        // Either way the pump sees the cancel and finishes up.
-        mAlarm.Cancel();
+        // Observation only: mAlarm belongs to the pump's serialized
+        // continuation chain and grpc::Alarm::Set/Cancel are not
+        // thread-safe, so we must not touch it here.  The cancel is
+        // picked up by the pump within one poll interval - a pending
+        // write completes with ok=false via OnWriteDone, or the armed
+        // alarm fires at its deadline and pump() sees IsCancelled().
     }
 
 #ifndef NDEBUG
@@ -704,9 +709,10 @@ Subscriber must provide access token in x-custom-auth-token header field.
         }
 
         // Idle: hand the thread back; the alarm resumes the pump at the
-        // deadline (ok=true) or immediately on Cancel (ok=false).  While
-        // the stream stays quiet back off towards the maximum, which the
-        // options keep below the server shutdown deadline.
+        // deadline, so the interval also bounds how long a client cancel
+        // or server shutdown goes unnoticed.  While the stream stays
+        // quiet back off towards the maximum, which the options keep
+        // below the server shutdown deadline.
         const auto interval
             = std::min(mCurrentPollInterval, mMaximumPollInterval);
         mCurrentPollInterval = std::min(interval*2, mMaximumPollInterval);

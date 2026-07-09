@@ -109,7 +109,7 @@ public:
         // the start() thread is still inside mServer->Wait() and Shutdown()
         // is what unblocks it.  The server is destroyed with this class,
         // after the start() future has been joined.
-        if (mServer && mServerStarted.exchange(false))
+        if (mServer && mServerStarted.load())
         {
             SPDLOG_LOGGER_INFO(mLogger, "Shutting down service");
             const auto shutdownDeadline = mOptions.getShutdownDeadline();
@@ -128,6 +128,7 @@ public:
                 GPR_TIMESPAN // NOLINT
             };
             mServer->Shutdown(deadline);
+            mServerStarted.store(false);
         }
     }
 
